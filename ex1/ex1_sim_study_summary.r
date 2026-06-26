@@ -49,7 +49,7 @@ abs_mad_plot <- ggplot(data = sim_study_abs_err) +
   ylab("Mean Absolute Error (Posterior Mean)") +
   theme_bw()
 
-ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "stat_abs_err.pdf")
+ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_abs_err.pdf", create.dir = TRUE)
 
 sim_study_std_err <- abs(sim_study_stat) |>
   select(contains("absz_")) |>
@@ -89,7 +89,7 @@ std_err_plot <- ggplot(data = sim_study_std_err) +
   ylab("Mean Standardized Error (Posterior Mean)") +
   theme_bw()
 
-ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "stat_std_err.pdf")
+ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_std_err.pdf", create.dir = TRUE)
 
 sim_study_overfit <- abs(sim_study_stat) |>
   pivot_longer(
@@ -135,4 +135,4 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   theme(strip.background = element_rect(fill = "white", color = "black")) +
   ggtitle("(B)")
 
-ggsave(overfit_plot, device = "pdf", width = 4, height = 5, file = "stat_overfit.pdf")
+ggsave(overfit_plot, device = "pdf", width = 4, height = 5, file = "../figs/stat_overfit.pdf", create.dir = TRUE)

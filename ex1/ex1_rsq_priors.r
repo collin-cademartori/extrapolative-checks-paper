@@ -79,4 +79,4 @@ rsqs <- list(
 rsqs <- lapply(rsqs, sqrt)
 
 rsq_hists <- plot_prior_rsq(rsqs)
-ggsave(rsq_hists, file = "stat_rsq_hists.pdf", device = "pdf", width = 4, height = 5)
+ggsave(rsq_hists, file = "../figs/stat_rsq_hists.pdf", device = "pdf", width = 4, height = 5, create.dir = TRUE)

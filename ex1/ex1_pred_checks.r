@@ -19,10 +19,10 @@ nonstat_plot_ppc <- plot_data_units(
   nonstat_prior_data, 
   unit = 1, samples = 14, hide_y = FALSE
 )
-ggsave(nonstat_plot_ppc, file="ppc_nonstat_ns.pdf", device = "pdf", width = 7, height = 4)
+ggsave(nonstat_plot_ppc, file="../figs/ppc_nonstat_ns.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
 
 stat_plot_ppc <- plot_data_units(
   stat_prior_data,
   unit = 1, samples = 14, hide_y = FALSE
 )
-ggsave(stat_plot_ppc, file="ppc_stat_ns.pdf", device = "pdf", width = 7, height = 4)
+ggsave(stat_plot_ppc, file="../figs/ppc_stat_ns.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)

@@ -87,7 +87,7 @@ test_data <- sample_model(N_units = 200, T_times = 100, K_latent = 6,
                           type = "prior_pred", quiet = FALSE)
 
 plot_ppd <- plot_data_highlight(test_data, use_exp = FALSE, cor_perc = 0.95, num_samples = 10)
-ggsave(plot_ppd, file="ppd_intercepts.pdf", device = "pdf", width = 7, height = 4)
+ggsave(plot_ppd, file="../figs/ppd_intercepts.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
 
 test_data_small <- sample_model(N_units = 6, T_times = 30, K_latent = 6,
                           overall_scales = rep(1, 6), err_scale = 0.2,
@@ -98,4 +98,4 @@ test_data_small <- sample_model(N_units = 6, T_times = 30, K_latent = 6,
                           type = "prior_pred")
 
 plot_ppd_hsmall <- plot_data_highlight(test_data_small, use_exp = FALSE, cor_perc = 0.66, num_samples = 10)
-ggsave(plot_ppd_hsmall, file="ppd_intercepts_hsmall.pdf", device = "pdf", width = 7, height = 4)
+ggsave(plot_ppd_hsmall, file="../figs/ppd_intercepts_hsmall.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)

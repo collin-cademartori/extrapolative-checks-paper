@@ -87,13 +87,13 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   p1_means <- apply(fits$stat1$y_means, c(2,3), mean)
 
   fit_plot <- plot_post_fits_all(test_ys, pns_means, p2_means, p1_means)
-  ggsave(fit_plot, file=paste0("sim_stat_figs/post_fit_plot_", i, ".png"))
+  ggsave(fit_plot, file=paste0("../figs/sim_stat_figs/post_fit_plot_", i, ".png"), create.dir = TRUE)
 
   if (post_check) {
     check_plot <- plot_data_matrix_post(test_ys, fits$stat2$y_pred)
     ggsave(
-        check_plot, file=paste0("sim_stat_figs/check_plot_", i, ".pdf"),
-        device = "pdf", height = 4, width = 8
+        check_plot, file=paste0("../figs/sim_stat_figs/check_plot_", i, ".pdf"),
+        device = "pdf", height = 4, width = 8, create.dir = TRUE
     )
   }
 

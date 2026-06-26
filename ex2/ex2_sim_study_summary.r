@@ -82,7 +82,7 @@ std_err_plot <- ggplot(data = sim_study_std_err) +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black"))
 
-ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "ints_std_err.pdf")
+ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints_std_err.pdf", create.dir = TRUE)
 
 ## Overfitting plot
 
@@ -134,4 +134,4 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black"))
 
-ggsave(overfit_plot, device = "pdf", width = 6, height = 3.5, file = "ints_overfit.pdf")
+ggsave(overfit_plot, device = "pdf", width = 6, height = 3.5, file = "../figs/ints_overfit.pdf", create.dir = TRUE)
