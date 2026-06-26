@@ -1,7 +1,6 @@
-*
-!*.*
 *.png
 .DS_Store
 *.RData
 *.hpp
 *.pdf
+ife
