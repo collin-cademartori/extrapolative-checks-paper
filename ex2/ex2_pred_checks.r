@@ -3,6 +3,7 @@
 #################################
 
 source("../sample_model.r")
+source("../plotting.r")
 
 # Step 1. Generate a sample (with unit-level intercepts) with three types of untreated units:
 #  1. Units which are uncorrelated with the treated unit
@@ -89,7 +90,7 @@ test_data <- sample_model(N_units = 200, T_times = 100, K_latent = 6,
 plot_ppd <- plot_data_highlight(test_data, use_exp = FALSE, cor_perc = 0.95, num_samples = 10)
 ggsave(plot_ppd, file="../figs/ppd_intercepts.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
 
-test_data_small <- sample_model(N_units = 6, T_times = 30, K_latent = 6,
+test_data_small <- sample_model(N_units = 6, T_times = 30, K_latent = 3,
                           overall_scales = rep(1, 6), err_scale = 0.2,
                           autocor_a = 99, autocor_b = 1,
                           include_ints = TRUE,

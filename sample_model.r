@@ -4,7 +4,7 @@ library(ggplot2)
 library(forcats)
 library(dplyr)
 
-ife_mod <- cmdstan_model(stan_file = "ife.stan")
+ife_mod <- cmdstan_model(stan_file = "../ife.stan")
 
 sample_model <- function(
   N_units = 8, T_times = 20, K_latent = 4,

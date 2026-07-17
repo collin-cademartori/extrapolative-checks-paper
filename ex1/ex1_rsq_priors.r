@@ -4,7 +4,8 @@
 ## for predicting observed series from time. Distributions favoring larger R squared
 ## values more frequently produce series with approximately linear trends.
 
-source("model_utils.R")
+source("../sample_model.r")
+source("../plotting.r")
 
 plot_prior_rsq <- function(rsqs) {
   rsq_df <- stack(rsqs)
@@ -34,7 +35,7 @@ overall_scales_nonstat <- rep(1,8)
 nonstat_prior_data <- sample_model(overall_scales = 0.5 * overall_scales_nonstat, 
                                    #err_scale = 3,
                                    err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
-                                   data = test_ys,
+                                   data = NULL,
                                    autocor_a = 8, autocor_b = 2,
                                    nonstationary = TRUE, num_treated = 0,
                                    type = "prior_pred", K_latent = 7, iter = 4000)
@@ -42,9 +43,8 @@ nonstat_prior_data <- sample_model(overall_scales = 0.5 * overall_scales_nonstat
 nonstat_rsq <- apply(nonstat_prior_data$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r.squared)
 
 stat_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
-                                # err_scale = 0.05,
                                 err_scale = 0, err_scale_mean = 0.2, err_scale_sd = 0.2,
-                                data = test_ys,
+                                data = NULL,
                                 autocor_a = 99, autocor_b = 1,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)
@@ -53,7 +53,7 @@ stat_rsq <- apply(stat_prior_data$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r
 
 stat_prior_data1 <- sample_model(overall_scales = 2 * overall_scales_stat, 
                                 err_scale = 0.05,
-                                data = test_ys,
+                                data = NULL,
                                 autocor_a = 99, autocor_b = 1,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)
@@ -61,9 +61,8 @@ stat_prior_data1 <- sample_model(overall_scales = 2 * overall_scales_stat,
 stat1_rsq <- apply(stat_prior_data1$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r.squared)
 
 weak_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
-                                # err_scale = 0.05,
                                 err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
-                                data = test_ys,
+                                data = NULL,
                                 autocor_a = 99, autocor_b = 1,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)

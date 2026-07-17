@@ -5,6 +5,7 @@
 ## treatment period only.
 
 source("../sample_model.r")
+source("../plotting.r")
 
 ruv <- function(d) {
   v <- rnorm(d)
@@ -168,6 +169,10 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, post_che
   return(study_res)
 }
 
-sim_study_ints <- run_sim_study_intercepts(reps = 50, N_comps = c(1, 3), sims = c(0.7, 0.9))
+sim_study_ints <- run_sim_study_intercepts(
+  reps = 2, # 50
+  N_comps = c(1, 3),
+  sims = c(0.7, 0.9)
+)
 
 save(sim_study_ints, file="sim_study_ints.RData")

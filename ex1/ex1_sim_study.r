@@ -3,7 +3,8 @@
 ## iid error scale) to samples from the prior predictive distribution of the
 ## nonstationary model.
 
-source(".,/sample_model.r")
+source("../sample_model.r")
+source("../plotting.r")
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   test_ys <- test_data$ys[i, , ]
@@ -101,7 +102,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
 }
 
 run_sim_study_stat <- function(K_latent = 3, reps, post_check = FALSE) {
-  test_data <- sample_model(overall_scales = rep(1, 8), err_scale = 3, # err_scale = 5
+  test_data <- sample_model(overall_scales = rep(1, 8), err_scale = 3,
                             autocor_a = 8, autocor_b = 2,
                             nonstationary = TRUE, num_treated = 0,
                             type = "prior_pred", K_latent = K_latent)
@@ -124,10 +125,10 @@ run_sim_study_stat <- function(K_latent = 3, reps, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 300
+study_reps <- 2 # 300
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps)
 
 save(sim_study_stat, file="sim_study_ns.RData")
 
-study_reps <- 1
-sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, post_check = TRUE)
+# study_reps <- 1
+# sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, post_check = TRUE)
