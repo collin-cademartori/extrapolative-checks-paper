@@ -84,7 +84,7 @@ test_data <- sample_model(N_units = 200, T_times = 100, K_latent = 6,
                           autocor_a = 99, autocor_b = 1,
                           include_ints = TRUE,
                           nonstationary = FALSE, num_treated = 0,
-                          int_scale = 1.5,
+                          int_scale = 1, #1.5
                           type = "prior_pred", quiet = FALSE)
 
 plot_ppd <- plot_data_highlight(test_data, use_exp = FALSE, cor_perc = 0.95, num_samples = 10)

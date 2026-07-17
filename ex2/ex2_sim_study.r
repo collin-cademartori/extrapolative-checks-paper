@@ -87,7 +87,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
                             data = test_ys,
                             autocor_a = 99, autocor_b = 1,
                             nonstationary = FALSE, num_treated = 5,
-                            include_ints = TRUE, int_scale = max(overall_scales),
+                            include_ints = TRUE, int_scale = 1, #max(overall_scales)
                             type = "posterior", quiet = TRUE, iter = 500)
   fits$ints$name <- "ints"
 
