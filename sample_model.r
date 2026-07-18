@@ -12,7 +12,7 @@ sample_model <- function(
   err_scale_mean = 0, err_scale_sd = 0,
   autocor_a, autocor_b, nonstationary, int_scale = 1, include_ints = FALSE,
   num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
-  seed = NULL
+  seed = NULL, n_chains = 4
 ) {
   stopifnot(type %in% c("prior_pred", "posterior"))
   stopifnot(0 < autocor_a)
@@ -46,7 +46,8 @@ sample_model <- function(
 
   model_sample <- ife_mod$sample(
     data = stat_data,
-    parallel_chains = 4,
+    parallel_chains = n_chains,
+    chains = n_chains,
     iter_warmup = iter,
     iter_sampling = iter,
     adapt_delta = ad,
@@ -95,6 +96,10 @@ sample_model <- function(
     abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[,1,]
     abs_cors_mean <- colMeans(abs_cors)
 
+    abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
+    abs_cor_data <- abs(cor(data[,1], seq(nrow(data))))
+    time_cor_pval <- mean(abs_cor_pred > abs_cor_data)
+
     y_cor <- abs(cor(data)[1, 2:ncol(data)])
     cor_err_mean <- rowMeans(abs(y_cor - t(abs_cors)))
 
@@ -105,7 +110,9 @@ sample_model <- function(
       effect_sds = effect_sds,
       mean_abs_diffs = mad,
       abs_cors = abs_cors_mean,
-      abs_cors_err = cor_err_mean
+      abs_cors_err = cor_err_mean,
+      err_scale = err_scale,
+      time_cor_pval = time_cor_pval
     ))
   }
 

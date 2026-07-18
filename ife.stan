@@ -82,6 +82,11 @@ data {
 
 transformed data {
 
+  vector[T_times] times;
+  for(t in 1:T_times) {
+    times[t] = t;
+  }
+
   matrix[T_times, N_units] Y_outcome;
   cov_matrix[T_times] errors_cov;
   cov_matrix[T_times] errors_precision;
@@ -253,6 +258,9 @@ generated quantities {
       Y_pred[:,n] = cumulative_sum(Y_pred[,n]);
     }
   }
+
+  real time_cor_pred;
+  time_cor_pred = abs(mean((Y_pred[:, 1] - mean(Y_pred[,1])) .* times) / (sd(Y_pred[,1]) * sd(times)));
 
   matrix[T_times, N_units] Y0_pred;
   for(n in 1:N_units) {

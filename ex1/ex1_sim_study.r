@@ -3,6 +3,12 @@
 ## iid error scale) to samples from the prior predictive distribution of the
 ## nonstationary model.
 
+library(foreach)
+library(doParallel)
+
+cl <- makeCluster(detectCores() - 1, outfile = "")
+registerDoParallel(cl)
+
 source("../sample_model.r")
 source("../plotting.r")
 
@@ -23,7 +29,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
-    iter = 500
+    iter = 400,
+    n_chains = 1
   )
   fits$nonstat$name <- "nonstat"
 
@@ -35,7 +42,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     autocor_a = 99, autocor_b = 1, # autocor_a = 99
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
-    iter = 500
+    iter = 400,
+    n_chains = 1
   )
   fits$stat2$name <- "stat2"
 
@@ -47,7 +55,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     autocor_a = 99, autocor_b = 1, # autocor_a = 99
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
-    iter = 500
+    iter = 400,
+    n_chains = 1
   )
   fits$stat1$name <- "stat1"
 
@@ -57,15 +66,20 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
 
     stat_y_pred <- pfit$y_pred
     pred_inc <- matrix(NA, nrow = T_times, ncol = N_units)
+    pred_width <- matrix(NA, nrow = T_times, ncol = N_units)
     for (n in 1:N_units) {
       for (t in 1:T_times) {
-        y_bounds <- quantile(stat_y_pred, c(0.005, 0.995))
+        y_bounds <- quantile(stat_y_pred[, t, n], c(0.025, 0.975))
         pred_inc[t, n] <-
           (test_ys[t, n] >= y_bounds[1]) &&
           (test_ys[t, n] <= y_bounds[2])
+        pred_width[t, n] <- (y_bounds[2] - y_bounds[1]) / (max(test_ys[, n]) - min(test_ys[, n]))
       }
     }
     res$pred_perc <- mean(pred_inc)
+    res$pred_width <- mean(pred_width)
+    
+    res$time_cor_pval <- pfit$time_cor_pval
 
     absz <- abs(pfit$effect_means / pfit$effect_sds)
     res[paste0("absz_", seq_along(absz))] <- absz
@@ -105,28 +119,42 @@ run_sim_study_stat <- function(K_latent = 3, reps, post_check = FALSE) {
   test_data <- sample_model(overall_scales = rep(1, 8), err_scale = 3,
                             autocor_a = 8, autocor_b = 2,
                             nonstationary = TRUE, num_treated = 0,
-                            type = "prior_pred", K_latent = K_latent)
+                            type = "prior_pred", K_latent = K_latent,
+                            iter = 2 * reps)
 
-  study_res <- data.frame()
-  study_units <- sample.int(1000, size = reps, replace = FALSE)
+  #study_res <- data.frame()
+  study_units <- sample.int(2 * reps, size = reps, replace = FALSE)
   iter <- 1
-  for(s in study_units) {
-    unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
-    study_res <- rbind(study_res, unit_res)
-
-    writeLines(paste0("Iteration ", iter, ":"))
-    absz_res <- study_res |> dplyr::select(contains("absz"))
-    print(colMeans(absz_res))
-    writeLines("-----------------------------")
-
-    iter <- iter + 1
-  }
+  exp_vars <- c('run_sim_stat', 'sample_model', 'ife_mod', 'plot_post_fits_all', 'plot_data_matrix_post')
+  exp_packages <- c('cmdstanr', 'posterior', 'forcats', 'dplyr', 'ggplot2')
+  study_res <- 
+    foreach(
+      s = study_units, iter = seq(reps),
+      .combine='rbind', .export = exp_vars, .packages = exp_packages
+    ) %dopar% {
+      print(paste0(">>>> Beginning iteration ", iter, "."))
+      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
+    }
 
   return(study_res)
 }
 
-study_reps <- 2 # 300
+study_reps <- 2000
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps)
+
+stopCluster(cl)
+
+absz_res <- sim_study_stat |> dplyr::select(contains("absz"))
+print(colMeans(absz_res))
+
+ci_width_res <- sim_study_stat |> dplyr::select(contains("width"))
+print(colMeans(ci_width_res))
+
+ci_cov_res <- sim_study_stat |> dplyr::select(contains("perc"))
+print(colMeans(ci_cov_res))
+
+time_pval <- sim_study_stat |> dplyr::select(contains("time_cor"))
+print(colMeans(time_pval))
 
 save(sim_study_stat, file="sim_study_ns.RData")
 
