@@ -107,6 +107,8 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
     }
     res$pred_perc <- mean(pred_inc)
 
+    res$loc_cor_pval <- pfit$loc_cor_pval
+
     absz <- abs(pfit$effect_means / pfit$effect_sds)
     res[paste0("absz_", seq_along(absz))] <- absz
 

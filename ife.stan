@@ -31,6 +31,14 @@ functions {
     return ar_process;
   }
 
+  // Pearson correlation between two equal-length vectors.
+  real pearson_cor(vector a, vector b) {
+    vector[num_elements(a)] a_centered = a - mean(a);
+    vector[num_elements(b)] b_centered = b - mean(b);
+    return dot_product(a_centered, b_centered)
+           / sqrt(dot_self(a_centered) * dot_self(b_centered));
+  }
+
   real ns_scale_factor(int max_T, real a, real b) {
 
     real factor = max_T;
@@ -259,8 +267,26 @@ generated quantities {
     }
   }
 
-  real time_cor_pred;
-  time_cor_pred = abs(mean((Y_pred[:, 1] - mean(Y_pred[,1])) .* times) / (sd(Y_pred[,1]) * sd(times)));
+  // Statistic S1 (paper Section 5): the absolute correlation of the treated
+  // unit's predictive replicate with time, a summary of monotone trend.
+  real time_cor_pred = abs(pearson_cor(Y_pred[:, 1], times));
+
+  // Statistic S2 (paper Section 5): the association across untreated units
+  // between (i) each unit's correlation with the treated unit and (ii) its
+  // long-run location (mean level). Evaluated on the predictive replicate
+  // Y_pred over the pre-treatment window only, so the treated unit's treatment
+  // period does not distort the correlations.
+  real loc_cor_pred;
+  {
+    int T_pre = T_times - num_treated;
+    vector[N_units - 1] cor_with_treated;
+    vector[N_units - 1] unit_location;
+    for(n in 2:N_units) {
+      cor_with_treated[n - 1] = pearson_cor(Y_pred[1:T_pre, n], Y_pred[1:T_pre, 1]);
+      unit_location[n - 1] = mean(Y_pred[1:T_pre, n]);
+    }
+    loc_cor_pred = pearson_cor(cor_with_treated, unit_location);
+  }
 
   matrix[T_times, N_units] Y0_pred;
   for(n in 1:N_units) {

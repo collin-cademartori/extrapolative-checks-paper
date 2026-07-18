@@ -37,6 +37,17 @@ cors_summary <- sim_study_ints |>
 
 print(cors_summary)
 
+## Statistic S2 predictive p-value (see paper Section 5), averaged separately for
+## each of the four data generating conditions (num_comp x sim).
+loc_cor_summary <- sim_study_ints |>
+  group_by(num_comp, sim) |>
+  summarize(
+    mean_loc_cor_nint = mean(nint_loc_cor_pval),
+    mean_loc_cor_ints = mean(ints_loc_cor_pval)
+  )
+
+print(loc_cor_summary)
+
 sim_study_std_err <- abs(sim_study_ints) |>
   # select(contains("absz_")) |>
   pivot_longer(
@@ -87,6 +98,7 @@ ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints
 ## Overfitting plot
 
 sim_study_overfit <- abs(sim_study_ints) |>
+  select(-ends_with("loc_cor_pval")) |>
   pivot_longer(
     cols = !c(num_comp, sim),
     names_to = c("model", ".value"),

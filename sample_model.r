@@ -100,6 +100,21 @@ sample_model <- function(
     abs_cor_data <- abs(cor(data[,1], seq(nrow(data))))
     time_cor_pval <- mean(abs_cor_pred > abs_cor_data)
 
+    # Statistic S2 (paper Section 5) on the pre-treatment window: the correlation
+    # across untreated units between their correlation with the treated unit and
+    # their mean level. The p-value compares S2 on the predictive replicates to
+    # S2 on the observed data.
+    loc_cor_pred <- as.numeric(model_sample$draws("loc_cor_pred"))
+    pre_times <- seq_len(nrow(data) - num_treated)
+    # Untreated units over the pre-treatment window; drop = FALSE keeps this a
+    # matrix so colMeans() works (relevant only in the degenerate single-untreated
+    # case, N_units == 2, which does not arise in the examples).
+    untreated_pre <- data[pre_times, -1, drop = FALSE]
+    cor_with_treated <- as.numeric(cor(untreated_pre, data[pre_times, 1]))
+    unit_location <- colMeans(untreated_pre)
+    loc_cor_data <- cor(cor_with_treated, unit_location)
+    loc_cor_pval <- mean(loc_cor_pred > loc_cor_data)
+
     y_cor <- abs(cor(data)[1, 2:ncol(data)])
     cor_err_mean <- rowMeans(abs(y_cor - t(abs_cors)))
 
@@ -112,7 +127,8 @@ sample_model <- function(
       abs_cors = abs_cors_mean,
       abs_cors_err = cor_err_mean,
       err_scale = err_scale,
-      time_cor_pval = time_cor_pval
+      time_cor_pval = time_cor_pval,
+      loc_cor_pval = loc_cor_pval
     ))
   }
 
