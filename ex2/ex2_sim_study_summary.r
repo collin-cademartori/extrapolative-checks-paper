@@ -98,26 +98,22 @@ ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints
 ## Overfitting plot
 
 sim_study_overfit <- abs(sim_study_ints) |>
-  select(-ends_with("loc_cor_pval")) |>
   pivot_longer(
     cols = !c(num_comp, sim),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
     names_pattern = "^([^_]+)_(.*)$"
   ) |>
-  rename(
-    perc = pred_perc,
-    mad = pred_mad,
-    ncomp = num_comp
-  ) |>
-  filter(ncomp == 3) |>
+  filter(num_comp == 3) |>
   mutate(
-    # simf = as.factor(paste0("lambda == ", sim)),
     errspur = (acor_3 + acor_4 + acor_5) / 3
   ) |>
   select(!starts_with("acor")) |>
+  # Second pivot only over the time-indexed columns (name ends in _<digit>);
+  # the scalar per-model stats (pred_perc, pred_mad, loc_cor_pval) are left
+  # untouched, so new scalar stats can be added without breaking this pivot.
   pivot_longer(
-    cols = contains("_"),
+    cols = matches("_\\d+$"),
     names_to = c(".value", "time"),
     names_transform = list(time = as.integer),
     names_pattern = "(.*)_(\\d+)$"
