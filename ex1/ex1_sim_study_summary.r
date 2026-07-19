@@ -130,8 +130,11 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
   xlab("Average Error (MAD)") +
   ylab("Mean Standardized Error (Posterior Mean)") +
-  # scale_y_continuous(limits = c(0.43, 0.8)) +
-  # scale_x_continuous(limits = c(1.25, 1.85)) +
+  # Pad the axes by a fraction of the data range (rather than fixed limits) so
+  # the point labels have room regardless of where the data land; matches the
+  # ex2 overfit plot.
+  scale_x_continuous(expand = expansion(mult = 0.15)) +
+  scale_y_continuous(expand = expansion(mult = 0.2)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black")) +
