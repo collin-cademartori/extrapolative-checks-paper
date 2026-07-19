@@ -12,83 +12,62 @@ library(forcats)
 source("../plotting.r")
 load("sim_study_ns.RData")
 
-sim_study_abs_err <- abs(sim_study_stat) |>
-  select(contains("mean_")) |>
-  pivot_longer(
-    cols = everything(),
-    names_to = c(".value", "time"),
-    names_transform = list(time = as.integer),
-    names_pattern = "(.*)_(\\d+)$"
-  ) |>
-  group_by(time) |>
-  summarize(
-    ns_mean = mean(nonstat_mean),
-    ns_se = sd(nonstat_mean) / sqrt(n()),
-    st_mean = mean(stat2_mean),
-    st_se = sd(stat2_mean) / sqrt(n())
-  ) |>
-  mutate(
-    ns_lower = ns_mean - 2 * ns_se,
-    ns_upper = ns_mean + 2 * ns_se,
-    st_lower = st_mean - 2 * st_se,
-    st_upper = st_mean + 2 * st_se
-  )
+# Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
+# weaker-prior stationary ("st", i.e. stat2) models, for a given per-time
+# statistic: the signed error "mean" or the standardized error "absz".
+summarize_error <- function(stat) {
+  abs(sim_study_stat) |>
+    select(contains(paste0(stat, "_"))) |>
+    pivot_longer(
+      cols = everything(),
+      names_to = c(".value", "time"),
+      names_transform = list(time = as.integer),
+      names_pattern = "(.*)_(\\d+)$"
+    ) |>
+    group_by(time) |>
+    summarize(
+      ns_mean = mean(.data[[paste0("nonstat_", stat)]]),
+      ns_se   = sd(.data[[paste0("nonstat_", stat)]]) / sqrt(n()),
+      st_mean = mean(.data[[paste0("stat2_", stat)]]),
+      st_se   = sd(.data[[paste0("stat2_", stat)]]) / sqrt(n())
+    ) |>
+    mutate(
+      ns_lower = ns_mean - 2 * ns_se,
+      ns_upper = ns_mean + 2 * ns_se,
+      st_lower = st_mean - 2 * st_se,
+      st_upper = st_mean + 2 * st_se
+    )
+}
 
-abs_mad_plot <- ggplot(data = sim_study_abs_err) +
-  geom_ribbon(
-    aes(x = time, ymin = ns_lower, ymax = ns_upper),
-    alpha = 0.1, color = "grey"
-  ) + 
-  geom_ribbon(
-    aes(x = time, ymin = st_lower, ymax = st_upper),
-    alpha = 0.1, color = "grey"
-  ) +
-  geom_line(aes(x = time, y = ns_mean)) +
-  geom_line(aes(x = time, y = st_mean), linetype = "dashed") +
-  xlab("Post-Treatment Time") +
-  ylab("Mean Absolute Error (Posterior Mean)") +
-  theme_bw()
+# Time series of the two models' means with shaded +/-2 SE bands
+# (nonstationary solid, stationary dashed).
+plot_error_bands <- function(df, y_label) {
+  ggplot(data = df) +
+    geom_ribbon(
+      aes(x = time, ymin = ns_lower, ymax = ns_upper),
+      alpha = 0.1, color = "grey"
+    ) +
+    geom_ribbon(
+      aes(x = time, ymin = st_lower, ymax = st_upper),
+      alpha = 0.1, color = "grey"
+    ) +
+    geom_line(aes(x = time, y = ns_mean)) +
+    geom_line(aes(x = time, y = st_mean), linetype = "dashed") +
+    xlab("Post-Treatment Time") +
+    ylab(y_label) +
+    theme_bw()
+}
 
+sim_study_abs_err <- summarize_error("mean")
+abs_mad_plot <- plot_error_bands(
+  sim_study_abs_err, "Mean Absolute Error (Posterior Mean)"
+)
 ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_abs_err.pdf", create.dir = TRUE)
 
-sim_study_std_err <- abs(sim_study_stat) |>
-  select(contains("absz_")) |>
-  pivot_longer(
-    cols = everything(),
-    names_to = c(".value", "time"),
-    names_transform = list(time = as.integer),
-    names_pattern = "(.*)_(\\d+)$"
-  ) |>
-  group_by(time) |>
-  summarize(
-    ns_mean = mean(nonstat_absz),
-    ns_se = sd(nonstat_absz) / sqrt(n()),
-    st_mean = mean(stat2_absz),
-    st_se = sd(stat2_absz) / sqrt(n())
-  ) |>
-  mutate(
-    ns_lower = ns_mean - 2 * ns_se,
-    ns_upper = ns_mean + 2 * ns_se,
-    st_lower = st_mean - 2 * st_se,
-    st_upper = st_mean + 2 * st_se
-  )
-
-
-std_err_plot <- ggplot(data = sim_study_std_err) +
-  geom_ribbon(
-    aes(x = time, ymin = ns_lower, ymax = ns_upper),
-    alpha = 0.1, color = "grey"
-  ) + 
-  geom_ribbon(
-    aes(x = time, ymin = st_lower, ymax = st_upper),
-    alpha = 0.1, color = "grey"
-  ) +
-  geom_line(aes(x = time, y = ns_mean)) +
-  geom_line(aes(x = time, y = st_mean), linetype = "dashed") +
-  xlab("Post-Treatment Time") +
-  ylab("Mean Standardized Error (Posterior Mean)") +
-  theme_bw()
-
+sim_study_std_err <- summarize_error("absz")
+std_err_plot <- plot_error_bands(
+  sim_study_std_err, "Mean Standardized Error (Posterior Mean)"
+)
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_std_err.pdf", create.dir = TRUE)
 
 sim_study_overfit <- abs(sim_study_stat) |>
@@ -98,14 +77,11 @@ sim_study_overfit <- abs(sim_study_stat) |>
     names_transform = list(time = as.integer),
     names_pattern = "^([^_]+)_(.*)$"
   ) |>
-  rename(
-    perc = pred_perc,
-    mad = pred_mad,
-    pwidth = pred_width,
-    pval = time_cor_pval
-  ) |>
+  # Second pivot only over the time-indexed columns (name ends in _<digit>);
+  # the scalar per-model stats (pred_mad, pred_perc, ...) are left untouched, so
+  # new scalar stats can be added without breaking this pivot.
   pivot_longer(
-    cols = contains("_"),
+    cols = matches("_\\d+$"),
     names_to = c(".value", "time"),
     names_transform = list(time = as.integer),
     names_pattern = "(.*)_(\\d+)$"
@@ -113,7 +89,7 @@ sim_study_overfit <- abs(sim_study_stat) |>
   group_by(time, model) |>
   summarize(
     mean_absz = mean(absz),
-    mean_mad = mean(mad)
+    mean_mad = mean(pred_mad)
   ) |>
   mutate(
     model = fct_recode(as.factor(model),
@@ -124,15 +100,11 @@ sim_study_overfit <- abs(sim_study_stat) |>
   )
 
 overfit_plot <- ggplot(data = sim_study_overfit) +
-  # geom_point(aes(x = mean_mad, y = mean_absz, group = time)) +
   geom_line(aes(x = mean_mad, y = mean_absz, group = time), linewidth = 0.8) +
   geom_label(aes(label = model, x = mean_mad, y = mean_absz), size = 3) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
   xlab("Average Error (MAD)") +
   ylab("Mean Standardized Error (Posterior Mean)") +
-  # Pad the axes by a fraction of the data range (rather than fixed limits) so
-  # the point labels have room regardless of where the data land; matches the
-  # ex2 overfit plot.
   scale_x_continuous(expand = expansion(mult = 0.15)) +
   scale_y_continuous(expand = expansion(mult = 0.2)) +
   theme_bw() +
