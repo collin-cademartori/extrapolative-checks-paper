@@ -82,9 +82,9 @@ transformed data {
   if(nonstationary) {
     Y_outcome = first_diffs(Y);
 
-    errors_cov[1,1] = 1;
-    errors_cov[1,2] = -1.0/sqrt(2);
-    errors_cov[2,1] = -1.0/sqrt(2);
+    errors_cov[1,1] = 0.5;
+    errors_cov[1,2] = -0.5;
+    errors_cov[2,1] = -0.5;
     errors_cov[1, 3:T_times] = rep_row_vector(0, T_times - 2);
     errors_cov[3:T_times, 1] = rep_vector(0, T_times - 2);
     for(s in 2:T_times) {
@@ -111,7 +111,7 @@ parameters {
   vector<lower=0>[tau_val > 0 ? 0 : 1] tau_param;
 
   matrix[T_times, K_latent] Phi_innovations;
-  vector<lower=0, upper=0.98>[K_latent] rho;
+  vector<lower=0, upper=1>[K_latent] rho;
 
   cholesky_factor_cov[M_units, K_latent] Lambda;
 
@@ -156,6 +156,12 @@ transformed parameters {
 
   matrix[T_times, M_units] Lambda_Phi = Phi * (Lambda');
 
+  // Each unit's outcome mean is sigma[n] * (intercept + latent component), so the
+  // intercept gamma[n] is scaled per-unit by that unit's overall scale sigma[n]
+  // (commensurate with how the loadings and errors are scaled). In the
+  // nonstationary (differenced) branch the constant intercept survives
+  // differencing only in the first (level) element, and reappears at every time
+  // once Y is reconstructed by cumulative_sum.
   matrix[T_times, M_units] Y_means_0;
   matrix[T_times, M_units] Y_means;
   if(nonstationary) {
@@ -183,7 +189,7 @@ transformed parameters {
 model {
 
   if(fit_overall_scales == 1) {
-    sigma_raw ~ cauchy(2, 5);
+    sigma_raw ~ normal(0, 5); // Used to be cauchy(2,5)
   }
 
   if(tau_val == 0) {
@@ -193,6 +199,11 @@ model {
   to_vector(Phi_innovations) ~ std_normal();
   rho ~ beta(a_rho, b_rho);
 
+  // Loadings prior (paper eq. loadings_prior). The per-unit scale sigma[n] is
+  // applied downstream in Y_means, so the loadings as they enter the outcome
+  // have scale sigma[n] / sqrt(min(K, n)) -- the paper's sigma_i / sqrt(min(K, i)).
+  // The positive diagonal comes from the cholesky_factor_cov type, making the
+  // diagonal prior a half-normal (the paper's normal_+).
   for(n in 1:M_units) {
     Lambda[n,1:min(K_latent, n)] ~ normal(0, 1 / sqrt(min(K_latent, n)));
   }
@@ -200,7 +211,7 @@ model {
   gamma_raw ~ std_normal();
 
   if(num_treated > 0) {
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sd(Y[:,1]))) * effects_prec);
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sigma[1])) * effects_prec);
   }
 
   if(sample_posterior) {
