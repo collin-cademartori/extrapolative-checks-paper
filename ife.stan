@@ -39,22 +39,6 @@ functions {
            / sqrt(dot_self(a_centered) * dot_self(b_centered));
   }
 
-  real ns_scale_factor(int max_T, real a, real b) {
-
-    real factor = max_T;
-
-    vector[max_T - 1] ls = linspaced_vector(max_T - 1, 0, max_T - 2);
-    print(ls[max_T-1]);
-  
-    for(k in 1:(max_T - 1)) {
-      factor += 2 * (max_T - k) * prod((a + ls[1:k]) ./ (a + b + ls[1:k]));
-    }
-
-    factor = sqrt(factor);
-
-    return factor;
-  }
-
 }
 
 data {
@@ -75,16 +59,12 @@ data {
   int<lower=0, upper=1> unit_intercepts;
   int<lower=0, upper=1> sample_posterior;
 
-  int<lower=1, upper=T_times> T_ref;
-
   int<lower=0, upper=T_times> num_treated;
   real<lower=0> intercept_scale;
 
   real<lower=0> err_scale_val;
   real<lower=0> err_scale_mean;
   real<lower=0> err_scale_sd;
-
-  //vector[K_latent] autocors_fixed;
 
 }
 
@@ -221,7 +201,6 @@ model {
 
   if(num_treated > 0) {
     treatment_effects_0 ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sd(Y[:,1]))) * effects_prec);
-    //treatment_effects_0 ~ normal(0, 100);
   }
 
   if(sample_posterior) {
@@ -300,15 +279,12 @@ generated quantities {
 
   vector[N_units - 1] abs_cors;
   {
-    // vector[T_times] Yt = Y0_pred[:,1];
     row_vector[K_latent] Ltr = loadings[1,:];
     real vtr = inv(unit_error_precs[1]);
     for(n in 2:N_units) {
       row_vector[K_latent] Lun = loadings[n,:];
       real vun = inv(unit_error_precs[n]);
       abs_cors[n-1] = abs(dot_product(Ltr, Lun)) / sqrt((dot_self(Ltr) + vtr) * (dot_self(Lun) + vun));
-      // vector[T_times] Yu = Y0_pred[:,n];
-      // abs_cors[n - 1] = abs(dot_product(Yt, Yu) - (T_times * mean(Yt) * mean(Yu))) / (T_times * sd(Yt) * sd(Yu));
     }
   }
 

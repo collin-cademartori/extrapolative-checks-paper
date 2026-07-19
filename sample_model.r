@@ -40,8 +40,7 @@ sample_model <- function(
     unit_intercepts = include_ints,
     sample_posterior = (type == "posterior"),
     num_treated = num_treated,
-    intercept_scale = int_scale,
-    T_ref = T_times
+    intercept_scale = int_scale
   )
 
   model_sample <- ife_mod$sample(
