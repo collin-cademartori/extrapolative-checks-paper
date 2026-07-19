@@ -4,7 +4,7 @@ library(ggplot2)
 library(forcats)
 library(dplyr)
 
-ife_mod <- cmdstan_model(stan_file = "../ife.stan")
+ife_mod <- cmdstan_model(stan_file = "../ife_named.stan")
 
 sample_model <- function(
   N_units = 8, T_times = 20, K_latent = 4,
@@ -24,23 +24,23 @@ sample_model <- function(
   full_size <- iter
 
   stat_data <- list(
-    N_units = N_units,
+    M_units = N_units,
     T_times = T_times,
     K_latent = K_latent,
     Y = if (is.null(data)) matrix(0, nrow = T_times, ncol = N_units) else data,
-    autocor_a = autocor_a,
-    autocor_b = autocor_b,
-    err_scale_val = err_scale,
-    err_scale_mean = err_scale_mean,
-    err_scale_sd = err_scale_sd,
-    overall_scales_0 =
+    a_rho = autocor_a,
+    b_rho = autocor_b,
+    tau_val = err_scale,
+    m_tau = err_scale_mean,
+    s_tau = err_scale_sd,
+    sigma_data =
       if (is.null(overall_scales)) rep(0, N_units) else overall_scales,
     fit_overall_scales = if (type == "prior_pred") 0 else 1,
     nonstationary = nonstationary,
     unit_intercepts = include_ints,
     sample_posterior = (type == "posterior"),
     num_treated = num_treated,
-    intercept_scale = int_scale
+    gamma_scale = int_scale
   )
 
   model_sample <- ife_mod$sample(
@@ -79,17 +79,17 @@ sample_model <- function(
     y_pred_post <- y_pred_all[sample_index, 1, , ]
 
     effects <-
-      extract_variable_array(model_sample$draws(), "treatment_effects")[,1,]
+      extract_variable_array(model_sample$draws(), "delta")[,1,]
     effect_means <- colMeans(effects)
     effect_sds <- apply(effects, 2, sd)
 
-    err_scale <- as.numeric(model_sample$draws("err_scale"))
+    err_scale <- as.numeric(model_sample$draws("tau"))
     writeLines(paste0("Estimated error scale: ", round(mean(err_scale), 3)))
 
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
     writeLines(paste0("Estimated error MAD: ", round(mean(mad), 3)))
 
-    scale_mult <- extract_variable_array(model_sample$draws(), "overall_scales_param")[,1,]
+    scale_mult <- extract_variable_array(model_sample$draws(), "sigma_raw")[,1,]
     writeLines(paste0("Average scale multiplier: ", round(colMeans(scale_mult), 3)))
 
     abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[,1,]
