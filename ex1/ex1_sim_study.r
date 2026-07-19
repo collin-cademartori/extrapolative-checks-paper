@@ -39,7 +39,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     err_scale_mean = 0.2, # 0.1
     err_scale_sd = 0.2, # 0.5
     data = test_ys,
-    autocor_a = 99, autocor_b = 1, # autocor_a = 99
+    autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
@@ -52,7 +52,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     # err_scale_mean = 0.1, # 0.1
     # err_scale_sd = 0.01, # 0.5
     data = test_ys,
-    autocor_a = 99, autocor_b = 1, # autocor_a = 99
+    autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
@@ -139,7 +139,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 2000
+study_reps <- 100 #2000
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps)
 
 stopCluster(cl)

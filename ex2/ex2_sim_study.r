@@ -83,7 +83,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
   fits$nint <- sample_model(N_units = 10, T_times = 20, K_latent = 6,
                             overall_scales = overall_scales, err_scale = 0.2,
                             data = test_ys,
-                            autocor_a = 99, autocor_b = 1,
+                            autocor_a = 97, autocor_b = 3,
                             nonstationary = FALSE, num_treated = 5,
                             type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
                             n_chains = 1)
@@ -92,7 +92,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
   fits$ints <- sample_model(N_units = 10, T_times = 20, K_latent = 6,
                             overall_scales = overall_scales, err_scale = 0.2,
                             data = test_ys,
-                            autocor_a = 99, autocor_b = 1,
+                            autocor_a = 97, autocor_b = 3,
                             nonstationary = FALSE, num_treated = 5,
                             include_ints = TRUE, int_scale = 1, #max(overall_scales)
                             type = "posterior", quiet = TRUE, iter = 500,

@@ -45,7 +45,7 @@ nonstat_rsq <- apply(nonstat_prior_data$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 2
 stat_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
                                 err_scale = 0, err_scale_mean = 0.2, err_scale_sd = 0.2,
                                 data = NULL,
-                                autocor_a = 99, autocor_b = 1,
+                                autocor_a = 97, autocor_b = 3,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)
 
@@ -54,7 +54,7 @@ stat_rsq <- apply(stat_prior_data$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r
 stat_prior_data1 <- sample_model(overall_scales = 2 * overall_scales_stat, 
                                 err_scale = 0.05,
                                 data = NULL,
-                                autocor_a = 99, autocor_b = 1,
+                                autocor_a = 97, autocor_b = 3,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)
 
@@ -63,7 +63,7 @@ stat1_rsq <- apply(stat_prior_data1$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))
 weak_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
                                 err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
                                 data = NULL,
-                                autocor_a = 99, autocor_b = 1,
+                                autocor_a = 97, autocor_b = 3,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 4000)
 

@@ -81,7 +81,7 @@ y_example <- sim_model_intercepts(sim = 0.75)
 
 test_data <- sample_model(N_units = 200, T_times = 100, K_latent = 6,
                           overall_scales = rep(1, 200), err_scale = 0.2,
-                          autocor_a = 99, autocor_b = 1,
+                          autocor_a = 97, autocor_b = 3,
                           include_ints = TRUE,
                           nonstationary = FALSE, num_treated = 0,
                           int_scale = 1, #1.5
@@ -92,7 +92,7 @@ ggsave(plot_ppd, file="../figs/ppd_intercepts.pdf", device = "pdf", width = 7, h
 
 test_data_small <- sample_model(N_units = 6, T_times = 30, K_latent = 3,
                           overall_scales = rep(1, 6), err_scale = 0.2,
-                          autocor_a = 99, autocor_b = 1,
+                          autocor_a = 97, autocor_b = 3,
                           include_ints = TRUE,
                           nonstationary = FALSE, num_treated = 0,
                           int_scale = 1,
