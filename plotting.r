@@ -1,46 +1,3 @@
-plot_data_rows <- function(data, samples = 4, include_latent = TRUE, y_breaks = NULL) {
-  num_samples <- nrow(data$ys)
-  plot_units <- sample.int(num_samples, size = samples)
-  ys_plot <- data$ys[plot_units, , ]
-  ys_lat_plot <- data$ys_latent[plot_units, , ]
-
-  ys_long <- as.data.frame.table(ys_plot)
-  ys_lat_long <- as.data.frame.table(ys_lat_plot)
-  names(ys_long) <-  c("sample", "time", "unit", "obs")
-  names(ys_lat_long) <-  c("sample", "time", "unit", "obs")
-  ys_long$latent <- ys_lat_long$obs
-
-  levels(ys_long$unit) <- paste0("Unit ", levels(ys_long$unit))
-  levels(ys_long$sample) <- paste0("Sample ", levels(ys_long$sample))
-
-  ys_long$time <- as.integer(ys_long$time)
-
-  plot <- ggplot(data = ys_long) +
-    geom_abline(aes(slope = 0, intercept = 0), alpha = 0.5, linetype = "dashed") +
-    geom_line(aes(x = time, y = obs))
-
-  if (include_latent) {
-    plot <- plot + geom_line(aes(x = time, y = latent), color="blue")
-  }
-
-  plot <- plot + facet_grid(unit ~ sample, scales = "fixed") +
-    theme_bw() +
-    theme(panel.grid = element_blank()) +
-    theme(strip.background = element_rect(fill = "white", color = "black"))
-
-  plot <- plot +
-    xlab("Time") +
-    ylab("Outcome")
-
-  if (!is.null(y_breaks)) {
-    plot <- plot + scale_y_continuous(breaks = y_breaks)
-  }
-
-  print(plot_units)
-
-  return(plot)
-}
-
 plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y = TRUE) {
 
   ys <- data$ys
@@ -76,39 +33,6 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
   }
 
   print(plot_units)
-
-  return(plot)
-}
-
-# Plot posterior fit
-plot_post_fit <- function(data, post) {
-  ys_long <- as.data.frame.table(data)
-  names(ys_long) <- c("time", "unit", "obs")
-  means_long <- as.data.frame.table(post)
-  names(means_long) <- c("time", "unit", "obs")
-
-  ys_long$type = "data"
-  means_long$type = "mean"
-
-  data_long <- rbind(ys_long, means_long)
-  data_long$type <- as.factor(data_long$type)
-  data_long$time <- as.integer(data_long$time)
-
-  plot <- ggplot() +
-    geom_line(
-      data = filter(data_long, type == "data"),
-      aes(x = time, y = obs), color = "black"
-    ) + 
-    geom_line(
-      data = filter(data_long, type == "mean"),
-      aes(x = time, y = obs), color = "blue"
-    ) +
-    facet_wrap(vars(unit), ncol = 2, scales = "free_y") +
-    theme_bw() +
-    theme(panel.grid = element_blank()) +
-    theme(strip.background = element_rect(fill = "white", color = "black")) +
-    xlab("Time") +
-    ylab("Outcome")
 
   return(plot)
 }
@@ -153,19 +77,6 @@ plot_post_fits_all <- function(data, post_ns, post_2, post_1) {
     theme(strip.background = element_rect(fill = "white", color = "black")) +
     xlab("Time") +
     ylab("Outcome")
-
-  return(plot)
-}
-
-# Plot each unit in a separate frame
-plot_data_matrix <- function(ys) {
-  ys_long <- as.data.frame.table(ys)
-  names(ys_long) <-  c("time", "unit", "obs")
-  ys_long$time <- as.integer(ys_long$time)
-
-  plot <- ggplot(data = ys_long) +
-    geom_line(aes(x = time, y = obs)) +
-    facet_wrap(vars(unit), ncol = 4)
 
   return(plot)
 }
