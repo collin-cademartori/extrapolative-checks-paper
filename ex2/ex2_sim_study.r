@@ -41,21 +41,21 @@ sim_model_intercepts <- function(
     facs <- rbind(f_treat, f_alt, f_unc)
 
     N_units <- 1 + N_comp_true + N_comp_spur + N_unc
-    K_latent <- 2 + K_unc
-    loads <- matrix(nrow = N_units, ncol = K_latent)
+    K_gen <- 2 + K_unc
+    loads <- matrix(nrow = N_units, ncol = K_gen)
 
-    loads[1, ] <- c(1, rep(0, K_latent - 1))
+    loads[1, ] <- c(1, rep(0, K_gen - 1))
     
     for(n in 1:N_comp_true) {
-      loads[1 + n, ] <- c(sqrt(0.9), 0, sqrt(1 - 0.9) * ruv(K_latent - 2))
+      loads[1 + n, ] <- c(sqrt(0.9), 0, sqrt(1 - 0.9) * ruv(K_gen - 2))
     }
 
     for(n in 1:N_comp_spur) {
-      loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_latent - 2))
+      loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
     }
 
     for(n in 1:N_unc) {
-      loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0 , ruv(K_latent - 2))
+      loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0 , ruv(K_gen - 2))
     }
 
     lat <- loads %*% facs
@@ -71,7 +71,7 @@ sim_model_intercepts <- function(
 
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
+run_sim_intercepts <- function(N_comp, sim, K_latent = 6) {
   test_ys <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
 
   N_units <- ncol(test_ys)
@@ -80,19 +80,19 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
 
   fits <- list()
 
-  fits$nint <- sample_model(N_units = 10, T_times = 20, K_latent = 6,
+  fits$nint <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
                             overall_scales = overall_scales, err_scale = 0.2,
                             data = test_ys,
-                            autocor_a = 97, autocor_b = 3,
+                            autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
                             type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
                             n_chains = 1)
   fits$nint$name <- "nint"
 
-  fits$ints <- sample_model(N_units = 10, T_times = 20, K_latent = 6,
+  fits$ints <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
                             overall_scales = overall_scales, err_scale = 0.2,
                             data = test_ys,
-                            autocor_a = 97, autocor_b = 3,
+                            autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
                             include_ints = TRUE, int_scale = 1, #max(overall_scales)
                             type = "posterior", quiet = TRUE, iter = 500,
@@ -139,19 +139,10 @@ run_sim_intercepts <- function(N_comp, sim, K_latent, post_check = FALSE) {
 
   }) |> purrr::list_flatten()
 
-  if (post_check) {
-    # TBD
-    # check_plot <- plot_data_matrix_post(test_ys, fits$stat2$y_pred)
-    # ggsave(
-    #     check_plot, file=paste0("sim_stat_figs/check_plot_", i, ".pdf"),
-    #     device = "pdf", height = 4, width = 8
-    # )
-  }
-
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, post_check = FALSE) {
+run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims) {
   # Functions called inside the worker must be exported explicitly; foreach does
   # not auto-export them across the %:% nesting (K_latent, a local variable, is
   # auto-exported). posterior is attached because sample_model() calls
@@ -179,8 +170,8 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, post_che
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 1000, # 50
-  N_comps = c(1, 3),
+  reps = 50, # 50
+  N_comps = c(2, 3),
   sims = c(0.7, 0.9)
 )
 
