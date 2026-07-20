@@ -45,11 +45,11 @@ plot_error_bands <- function(df, y_label) {
   ggplot(data = df) +
     geom_ribbon(
       aes(x = time, ymin = ns_lower, ymax = ns_upper),
-      alpha = 0.1, color = "grey"
+      alpha = 0.2, fill = "#858585"
     ) +
     geom_ribbon(
       aes(x = time, ymin = st_lower, ymax = st_upper),
-      alpha = 0.1, color = "grey"
+      alpha = 0.2, fill = "#858585"
     ) +
     geom_line(aes(x = time, y = ns_mean)) +
     geom_line(aes(x = time, y = st_mean), linetype = "dashed") +
@@ -105,11 +105,11 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
   xlab("Average Error (MAD)") +
   ylab("Mean Standardized Error (Posterior Mean)") +
-  scale_x_continuous(expand = expansion(mult = 0.15)) +
+  scale_x_continuous(expand = expansion(mult = 0.3)) +
   scale_y_continuous(expand = expansion(mult = 0.2)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black")) +
   ggtitle("(B)")
 
-ggsave(overfit_plot, device = "pdf", width = 4, height = 5, file = "../figs/stat_overfit.pdf", create.dir = TRUE)
+ggsave(overfit_plot, device = "pdf", width = 2.5, height = 5, file = "../figs/stat_overfit.pdf", create.dir = TRUE)
