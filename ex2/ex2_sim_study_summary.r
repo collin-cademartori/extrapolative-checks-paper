@@ -78,11 +78,11 @@ sim_study_std_err <- abs(sim_study_ints) |>
 std_err_plot <- ggplot(data = sim_study_std_err) +
   geom_ribbon(
     aes(x = time, ymin = ni_lower, ymax = ni_upper),
-    alpha = 0.1, fill = "#858585"
+    alpha = 0.2, fill = "#858585"
   ) + 
   geom_ribbon(
     aes(x = time, ymin = it_lower, ymax = it_upper),
-    alpha = 0.1, fill = "#858585"
+    alpha = 0.2, fill = "#858585"
   ) +
   geom_line(aes(x = time, y = ni_mean)) +
   geom_line(aes(x = time, y = it_mean), linetype = "dashed") +
