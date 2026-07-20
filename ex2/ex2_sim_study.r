@@ -6,8 +6,9 @@
 
 library(foreach)
 library(doParallel)
+library(doRNG)
 
-cl <- makeCluster(detectCores() - 1, outfile = "")
+cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
 
 source("../sample_model.r")
@@ -71,12 +72,19 @@ sim_model_intercepts <- function(
 
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = 6) {
+run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   test_ys <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
 
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
   overall_scales <- apply(test_ys, 2, sd)
+
+  # Draw both Stan seeds up front, before any sample_model() call. cmdstanr's
+  # $sample() advances R's RNG by a worker-count-dependent amount, so a seed
+  # drawn *after* a fit would be misaligned across different numbers of workers,
+  # breaking reproducibility. Drawing them here (under the task's doRNG stream)
+  # keeps them deterministic.
+  fit_seeds <- sample.int(.Machine$integer.max, 2)
 
   fits <- list()
 
@@ -86,7 +94,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 6) {
                             autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
                             type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
-                            n_chains = 1)
+                            n_chains = 1, seed = fit_seeds[1])
   fits$nint$name <- "nint"
 
   fits$ints <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
@@ -94,9 +102,9 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 6) {
                             data = test_ys,
                             autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
-                            include_ints = TRUE, int_scale = 1, #max(overall_scales)
+                            include_ints = TRUE, int_scale = 10, #max(overall_scales)
                             type = "posterior", quiet = TRUE, iter = 500,
-                            n_chains = 1)
+                            n_chains = 1, seed = fit_seeds[2])
   fits$ints$name <- "ints"
 
   res <- fits |> purrr::map(function(pfit) {
@@ -142,37 +150,40 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 6) {
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims) {
+run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
   # Functions called inside the worker must be exported explicitly; foreach does
-  # not auto-export them across the %:% nesting (K_latent, a local variable, is
-  # auto-exported). posterior is attached because sample_model() calls
-  # extract_variable_array() unqualified.
+  # not auto-export them (K_latent, a local variable, is auto-exported).
+  # posterior is attached because sample_model() calls extract_variable_array()
+  # unqualified.
   exp_vars <- c('run_sim_intercepts', 'sim_model_intercepts', 'ruv',
                 'sample_model', 'ife_mod')
   exp_packages <- c('cmdstanr', 'posterior')
 
-  # The %:% operator flattens the three nested loops into a single stream of
-  # sim x N_comp x rep tasks, distributed across workers by %dopar%.
+  # Flatten the sim x N_comp x rep design into a single (non-nested) stream of
+  # tasks. A single foreach lets %dorng% give each task an independent,
+  # reproducible RNG substream derived from `seed`, invariant to the number of
+  # workers -- doRNG does not support the nested %:% form. The rep column only
+  # sets the number of replicates per condition.
+  grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, sim = sims)
   study_res <-
-    foreach(sim = sims, .combine = 'rbind') %:%
-    foreach(N_comp = N_comps, .combine = 'rbind') %:%
     foreach(
-      r = seq_len(reps), .combine = 'rbind',
-      .export = exp_vars, .packages = exp_packages
-    ) %dopar% {
-      print(paste0(">>>> Condition (sim = ", sim, ", num_comp = ", N_comp, "), rep ", r, "."))
+      rep_i = grid$rep, N_comp = grid$N_comp, sim = grid$sim,
+      .combine = 'rbind', .export = exp_vars, .packages = exp_packages,
+      .options.RNG = seed
+    ) %dorng% {
+      print(paste0(">>>> Condition (sim = ", sim, ", num_comp = ", N_comp, "), rep ", rep_i, "."))
       unit_res <- run_sim_intercepts(N_comp = N_comp, sim = sim, K_latent = K_latent)
-      unit_res <- c(unit_res, list(sim = sim, num_comp = N_comp))
-      as.data.frame(unit_res)
+      as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))
     }
 
   return(study_res)
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 50, # 50
-  N_comps = c(2, 3),
-  sims = c(0.7, 0.9)
+  reps = 300,
+  N_comps = c(2),
+  sims = c(0.7),
+  seed = 52918
 )
 
 stopCluster(cl)

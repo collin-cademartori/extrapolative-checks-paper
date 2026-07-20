@@ -23,6 +23,12 @@ sample_model <- function(
 
   full_size <- iter
 
+  # Draw the draw-shuffle index *before* $sample(). cmdstanr's $sample() advances
+  # R's RNG by a non-deterministic (and worker-count-dependent) amount, so drawing
+  # this afterward would make the returned draw ordering irreproducible even with a
+  # fixed Stan seed. The index only permutes 1:iter, so it needs no draws yet.
+  sample_index <- sample.int(full_size, size = iter)
+
   stat_data <- list(
     M_units = N_units,
     T_times = T_times,
@@ -54,8 +60,6 @@ sample_model <- function(
     show_exceptions = !quiet,
     seed = seed
   )
-
-  sample_index <- sample.int(full_size, size = iter)
 
   if (type == "prior_pred") {
     ys_prior_all <-

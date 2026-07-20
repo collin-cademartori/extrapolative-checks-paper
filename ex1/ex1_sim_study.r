@@ -5,6 +5,7 @@
 
 library(foreach)
 library(doParallel)
+library(doRNG)
 
 cl <- makeCluster(detectCores() - 1, outfile = "")
 registerDoParallel(cl)
@@ -19,6 +20,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   overall_scales_stat <- apply(test_ys, 2, sd)
   overall_scales_nonstat <- apply(test_ys, 2, function(y) sd(diff(y)))
 
+  # Draw all three Stan seeds up front, before any sample_model() call. cmdstanr's
+  # $sample() advances R's RNG by a worker-count-dependent amount, so a seed drawn
+  # after a fit would be misaligned across worker counts, breaking reproducibility.
+  fit_seeds <- sample.int(.Machine$integer.max, 3)
+
   fits <- list()
 
   fits$nonstat <- sample_model(
@@ -30,7 +36,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = TRUE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1
+    n_chains = 1, seed = fit_seeds[1]
   )
   fits$nonstat$name <- "nonstat"
 
@@ -43,7 +49,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1
+    n_chains = 1, seed = fit_seeds[2]
   )
   fits$stat2$name <- "stat2"
 
@@ -56,7 +62,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1
+    n_chains = 1, seed = fit_seeds[3]
   )
   fits$stat1$name <- "stat1"
 
@@ -115,32 +121,39 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   return(res)
 }
 
-run_sim_study_stat <- function(K_latent = 3, reps, post_check = FALSE) {
+run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
+  # Seed the master-process RNG, and draw the dataset selection and the prior-
+  # predictive Stan seed *before* generating test_data, so they are not perturbed
+  # by cmdstanr's $sample() (which advances R's RNG).
+  set.seed(seed)
+  study_units <- sample.int(2 * reps, size = reps, replace = FALSE)
+  pp_seed <- sample.int(.Machine$integer.max, 1)
+
   test_data <- sample_model(overall_scales = rep(1, 8), err_scale = 3,
                             autocor_a = 8, autocor_b = 2,
                             nonstationary = TRUE, num_treated = 0,
                             type = "prior_pred", K_latent = K_latent,
-                            iter = 2 * reps)
+                            iter = 2 * reps, seed = pp_seed)
 
-  #study_res <- data.frame()
-  study_units <- sample.int(2 * reps, size = reps, replace = FALSE)
-  iter <- 1
   exp_vars <- c('run_sim_stat', 'sample_model', 'ife_mod', 'plot_post_fits_all', 'plot_data_matrix_post')
   exp_packages <- c('cmdstanr', 'posterior', 'forcats', 'dplyr', 'ggplot2')
-  study_res <- 
+  # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
+  # substream from `seed`, invariant to the number of workers.
+  study_res <-
     foreach(
       s = study_units, iter = seq(reps),
-      .combine='rbind', .export = exp_vars, .packages = exp_packages
-    ) %dopar% {
+      .combine = 'rbind', .export = exp_vars, .packages = exp_packages,
+      .options.RNG = seed
+    ) %dorng% {
       print(paste0(">>>> Beginning iteration ", iter, "."))
-      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
+      as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
     }
 
   return(study_res)
 }
 
 study_reps <- 1000 #2000
-sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps)
+sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
 
@@ -159,4 +172,4 @@ print(colMeans(time_pval))
 save(sim_study_stat, file="sim_study_ns.RData")
 
 # study_reps <- 1
-# sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, post_check = TRUE)
+# sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318, post_check = TRUE)
