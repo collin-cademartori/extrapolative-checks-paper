@@ -6,46 +6,32 @@ library(tidyr)
 source("../plotting.r")
 load("sim_study_ints.RData")
 
-ints_summary <- sim_study_ints |>
-  group_by(num_comp, sim) |>
-  summarize(
-    absz_diff1 = mean(ints_absz_1 - nint_absz_1),
-    absz_diff_se1 = sd(ints_absz_1 - nint_absz_1) / sqrt(n()),
-    nint_absz_mean1 = mean(nint_absz_1),
-    ints_absz_mean1 = mean(ints_absz_1)
-  )
-
-print(ints_summary)
-
+# 99% posterior-predictive interval coverage, averaged per condition. Both models
+# cover in excess of 99%, confirming the check cannot rule out the intercepts
+# model (paper Section 5). This is a purely numeric result -- the standardized
+# error and correlation summaries are instead conveyed by the plots below.
 perc_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
     mean_perc_nint = mean(nint_pred_perc),
-    mean_perc_ints = mean(ints_pred_perc)
+    mean_perc_ints = mean(ints_pred_perc),
+    .groups = "drop"
   )
 
+cat("\n99% posterior-predictive interval coverage by condition (no-int vs with-int):\n")
 print(perc_summary)
 
-cors_summary <- sim_study_ints |>
-  group_by(num_comp, sim) |>
-  summarize(
-    mean_cor_nint = mean(nint_acor_4),
-    mean_cor_ints = mean(ints_acor_4),
-    mean_cerr_nint = mean(nint_acor_err_4),
-    mean_cerr_ints = mean(ints_acor_err_4)
-  )
-
-print(cors_summary)
-
 ## Statistic S2 predictive p-value (see paper Section 5), averaged separately for
-## each of the four data generating conditions (num_comp x sim).
+## each data generating condition (num_comp x sim).
 loc_cor_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
     mean_loc_cor_nint = mean(nint_loc_cor_pval),
-    mean_loc_cor_ints = mean(ints_loc_cor_pval)
+    mean_loc_cor_ints = mean(ints_loc_cor_pval),
+    .groups = "drop"
   )
 
+cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-int):\n")
 print(loc_cor_summary)
 
 sim_study_std_err <- abs(sim_study_ints) |>
@@ -65,7 +51,8 @@ sim_study_std_err <- abs(sim_study_ints) |>
     ni_mean = mean(nint_absz),
     ni_se = sd(nint_absz) / sqrt(n()),
     it_mean = mean(ints_absz),
-    it_se = sd(ints_absz) / sqrt(n())
+    it_se = sd(ints_absz) / sqrt(n()),
+    .groups = "drop"
   ) |>
   mutate(
     ni_lower = ni_mean - 2 * ni_se,
@@ -127,7 +114,8 @@ sim_study_overfit <- abs(sim_study_ints) |>
   group_by(time, model, sim) |>
   summarize(
     mean_absz = mean(absz),
-    mean_err = mean(errspur)
+    mean_err = mean(errspur),
+    .groups = "drop"
   )
 
 overfit_plot <- ggplot(data = sim_study_overfit) +

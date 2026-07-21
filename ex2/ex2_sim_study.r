@@ -11,6 +11,17 @@ library(doRNG)
 cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
 
+# Quietly pre-attach the packages the workers need. `outfile = ""` surfaces all
+# worker output, so otherwise each worker's package startup banners
+# (cmdstanr/posterior, and foreach/rngtools via doRNG) would clutter the console
+# on first task dispatch. Pre-attaching them here silences that -- an
+# already-attached package is re-attached with no banner.
+invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
+  library(cmdstanr)
+  library(posterior)
+  library(doRNG)
+})))
+
 source("../sample_model.r")
 source("../plotting.r")
 
@@ -18,6 +29,16 @@ ruv <- function(d) {
   v <- rnorm(d)
   uv <- v / sqrt(sum(v * v))
   return(uv)
+}
+
+# Per-worker progress: each worker keeps a running count of the tasks it has
+# completed (persisted in its own session via the global `.worker_done`) and
+# prints a tagged line, so the workers' pace can be compared at a glance. No
+# inter-process communication -- each line is self-contained.
+worker_progress <- function(label) {
+  n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
+  assign(".worker_done", n, envir = globalenv())
+  message(sprintf("[worker %d] %3d done | %s", Sys.getpid(), n, label))
 }
 
 sim_model_intercepts <- function(
@@ -156,7 +177,7 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
   # posterior is attached because sample_model() calls extract_variable_array()
   # unqualified.
   exp_vars <- c('run_sim_intercepts', 'sim_model_intercepts', 'ruv',
-                'sample_model', 'ife_mod')
+                'worker_progress', 'sample_model', 'ife_mod')
   exp_packages <- c('cmdstanr', 'posterior')
 
   # Flatten the sim x N_comp x rep design into a single (non-nested) stream of
@@ -165,22 +186,37 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
   # workers -- doRNG does not support the nested %:% form. The rep column only
   # sets the number of replicates per condition.
   grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, sim = sims)
+
+  cat(sprintf(
+    paste0("\n=== Example 2 simulation study ===\n",
+           "  conditions : sim {%s} x num_comp {%s}  (%d)\n",
+           "  reps/cond  : %d\n",
+           "  tasks      : %d  (2 model fits each)\n",
+           "  workers    : %d   seed: %d\n\n"),
+    paste(sims, collapse = ", "), paste(N_comps, collapse = ", "),
+    length(sims) * length(N_comps), reps, nrow(grid),
+    getDoParWorkers(), seed))
+  t0 <- Sys.time()
+
   study_res <-
     foreach(
       rep_i = grid$rep, N_comp = grid$N_comp, sim = grid$sim,
       .combine = 'rbind', .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      print(paste0(">>>> Condition (sim = ", sim, ", num_comp = ", N_comp, "), rep ", rep_i, "."))
       unit_res <- run_sim_intercepts(N_comp = N_comp, sim = sim, K_latent = K_latent)
+      worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i))
       as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))
     }
+
+  cat(sprintf("--- study complete: %d tasks in %.1f min ---\n",
+              nrow(grid), as.numeric(difftime(Sys.time(), t0, units = "mins"))))
 
   return(study_res)
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 300,
+  reps = 3,
   N_comps = c(2),
   sims = c(0.7),
   seed = 52918
@@ -188,7 +224,7 @@ sim_study_ints <- run_sim_study_intercepts(
 
 stopCluster(cl)
 
-absz_res <- sim_study_ints |> dplyr::select(contains("absz"))
-print(colMeans(absz_res))
-
+# Save the raw study results; numeric summaries and plots are produced by
+# ex2_sim_study_summary.r (run it to view the results).
 save(sim_study_ints, file="sim_study_ints.RData")
+cat("Results saved to sim_study_ints.RData -- run ex2_sim_study_summary.r to summarize.\n")

@@ -32,8 +32,6 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
       )
   }
 
-  print(plot_units)
-
   return(plot)
 }
 
@@ -135,7 +133,6 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
 
   # cor_level <- quantile(cor(ys)[1,], cor_perc)
   cor_level <- 0.8
-  # print(round(cor_level, 2))
 
   ys_long <- as.data.frame.table(ys)
   names(ys_long) <-  c("sample", "time", "unit", "obs")
@@ -158,8 +155,6 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
   cor_cuts <- ys_long |> group_by(sample) |> 
     summarize(cor_cut = quantile(cor_y1, cor_perc)) |>
     mutate(sample_name = paste0("Sample ", sample, " (", round(cor_cut, 2), ")"))
-
-  print(as.character(cor_cuts$sample_name))
 
   ys_long <- ys_long |>
     left_join(cor_cuts, by = "sample") |>

@@ -12,6 +12,21 @@ library(forcats)
 source("../plotting.r")
 load("sim_study_ns.RData")
 
+# Numeric-only results (the standardized-error curves and overfit trade-off are
+# shown in the plots below): 99% posterior-predictive interval coverage -- at
+# least 99% for every model, so the check cannot rule out the misspecified model
+# (paper Section 5) -- and the S1 time-correlation predictive p-value, averaged
+# over the study for each model.
+models <- c("nonstat", "stat2", "stat1")
+num_summary <- cbind(
+  coverage   = colMeans(sim_study_stat[paste0(models, "_pred_perc")]),
+  `S1 p-val` = colMeans(sim_study_stat[paste0(models, "_time_cor_pval")])
+)
+rownames(num_summary) <- models
+
+cat("\nPer-model 99% interval coverage and S1 time-correlation predictive p-value:\n")
+print(round(num_summary, 3))
+
 # Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
 # weaker-prior stationary ("st", i.e. stat2) models, for a given per-time
 # statistic: the signed error "mean" or the standardized error "absz".
@@ -29,7 +44,8 @@ summarize_error <- function(stat) {
       ns_mean = mean(.data[[paste0("nonstat_", stat)]]),
       ns_se   = sd(.data[[paste0("nonstat_", stat)]]) / sqrt(n()),
       st_mean = mean(.data[[paste0("stat2_", stat)]]),
-      st_se   = sd(.data[[paste0("stat2_", stat)]]) / sqrt(n())
+      st_se   = sd(.data[[paste0("stat2_", stat)]]) / sqrt(n()),
+      .groups = "drop"
     ) |>
     mutate(
       ns_lower = ns_mean - 2 * ns_se,
@@ -89,7 +105,8 @@ sim_study_overfit <- abs(sim_study_stat) |>
   group_by(time, model) |>
   summarize(
     mean_absz = mean(absz),
-    mean_mad = mean(pred_mad)
+    mean_mad = mean(pred_mad),
+    .groups = "drop"
   ) |>
   mutate(
     model = fct_recode(as.factor(model),

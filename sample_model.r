@@ -58,6 +58,7 @@ sample_model <- function(
     adapt_delta = ad,
     refresh = if(quiet) 0 else 100,
     show_exceptions = !quiet,
+    show_messages = !quiet,
     seed = seed
   )
 
@@ -88,13 +89,7 @@ sample_model <- function(
     effect_sds <- apply(effects, 2, sd)
 
     err_scale <- as.numeric(model_sample$draws("tau"))
-    writeLines(paste0("Estimated error scale: ", round(mean(err_scale), 3)))
-
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
-    writeLines(paste0("Estimated error MAD: ", round(mean(mad), 3)))
-
-    scale_mult <- extract_variable_array(model_sample$draws(), "sigma_raw")[,1,]
-    writeLines(paste0("Average scale multiplier: ", round(colMeans(scale_mult), 3)))
 
     abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[,1,]
     abs_cors_mean <- colMeans(abs_cors)

@@ -10,8 +10,31 @@ library(doRNG)
 cl <- makeCluster(detectCores() - 1, outfile = "")
 registerDoParallel(cl)
 
+# Quietly pre-attach the packages the workers need. `outfile = ""` surfaces all
+# worker output, so otherwise each worker's package startup banners would clutter
+# the console on first task dispatch. Pre-attaching them here silences that -- an
+# already-attached package is re-attached with no banner.
+invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
+  library(cmdstanr)
+  library(posterior)
+  library(forcats)
+  library(dplyr)
+  library(ggplot2)
+  library(doRNG)
+})))
+
 source("../sample_model.r")
 source("../plotting.r")
+
+# Per-worker progress: each worker keeps a running count of the tasks it has
+# completed (persisted in its own session via the global `.worker_done`) and
+# prints a tagged line, so the workers' pace can be compared at a glance. No
+# inter-process communication -- each line is self-contained.
+worker_progress <- function(label) {
+  n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
+  assign(".worker_done", n, envir = globalenv())
+  message(sprintf("[worker %d] %3d done | %s", Sys.getpid(), n, label))
+}
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   test_ys <- test_data$ys[i, , ]
@@ -135,8 +158,16 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
                             type = "prior_pred", K_latent = K_latent,
                             iter = 2 * reps, seed = pp_seed)
 
-  exp_vars <- c('run_sim_stat', 'sample_model', 'ife_mod', 'plot_post_fits_all', 'plot_data_matrix_post')
+  exp_vars <- c('run_sim_stat', 'worker_progress', 'sample_model', 'ife_mod', 'plot_post_fits_all', 'plot_data_matrix_post')
   exp_packages <- c('cmdstanr', 'posterior', 'forcats', 'dplyr', 'ggplot2')
+  cat(sprintf(
+    paste0("\n=== Example 1 simulation study (nonstationary) ===\n",
+           "  reps    : %d\n",
+           "  tasks   : %d  (3 model fits each)\n",
+           "  workers : %d   seed: %d\n\n"),
+    reps, reps, getDoParWorkers(), seed))
+  t0 <- Sys.time()
+
   # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
   # substream from `seed`, invariant to the number of workers.
   study_res <-
@@ -145,31 +176,26 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
       .combine = 'rbind', .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      print(paste0(">>>> Beginning iteration ", iter, "."))
-      as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
+      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
+      worker_progress(sprintf("iteration %d (unit %d)", iter, s))
+      unit_res
     }
+
+  cat(sprintf("--- study complete: %d tasks in %.1f min ---\n",
+              reps, as.numeric(difftime(Sys.time(), t0, units = "mins"))))
 
   return(study_res)
 }
 
-study_reps <- 1000 #2000
+study_reps <- 2 #2000
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
 
-absz_res <- sim_study_stat |> dplyr::select(contains("absz"))
-print(colMeans(absz_res))
-
-ci_width_res <- sim_study_stat |> dplyr::select(contains("width"))
-print(colMeans(ci_width_res))
-
-ci_cov_res <- sim_study_stat |> dplyr::select(contains("perc"))
-print(colMeans(ci_cov_res))
-
-time_pval <- sim_study_stat |> dplyr::select(contains("time_cor"))
-print(colMeans(time_pval))
-
+# Save the raw study results; numeric summaries and plots are produced by
+# ex1_sim_study_summary.r (run it to view the results).
 save(sim_study_stat, file="sim_study_ns.RData")
+cat("Results saved to sim_study_ns.RData -- run ex1_sim_study_summary.r to summarize.\n")
 
 # study_reps <- 1
 # sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318, post_check = TRUE)
