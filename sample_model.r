@@ -95,7 +95,7 @@ sample_model <- function(
     abs_cors_mean <- colMeans(abs_cors)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
-    abs_cor_data <- abs(cor(data[,1], seq(nrow(data))))
+    abs_cor_data <- abs(cor(data[,2], seq(nrow(data))))
     time_cor_pval <- mean(abs_cor_pred > abs_cor_data)
 
     # Statistic S2 (paper Section 5) on the pre-treatment window: the correlation
