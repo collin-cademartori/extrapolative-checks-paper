@@ -6,6 +6,7 @@
 library(foreach)
 library(doParallel)
 library(doRNG)
+library(purrr)
 
 cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
@@ -89,7 +90,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   )
   fits$stat1$name <- "stat1"
 
-  res <- fits |> purrr::map(function(pfit) {
+  res <- fits |> map(function(pfit) {
 
     res <- list()
 
@@ -124,7 +125,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
 
     return(res)
 
-  }) |> purrr::list_flatten()
+  }) |> list_flatten()
 
   pns_means <- apply(fits$nonstat$y_means, c(2,3), mean)
   p2_means <- apply(fits$stat2$y_means, c(2,3), mean)

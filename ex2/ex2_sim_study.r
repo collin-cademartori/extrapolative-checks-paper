@@ -7,6 +7,7 @@
 library(foreach)
 library(doParallel)
 library(doRNG)
+library(purrr)
 
 cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
@@ -128,7 +129,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
                             n_chains = 1, seed = fit_seeds[2])
   fits$ints$name <- "ints"
 
-  res <- fits |> purrr::map(function(pfit) {
+  res <- fits |> map(function(pfit) {
 
     res <- list()
 
@@ -166,7 +167,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
 
     return(res)
 
-  }) |> purrr::list_flatten()
+  }) |> list_flatten()
 
   return(res)
 }
