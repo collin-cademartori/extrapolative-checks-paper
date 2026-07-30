@@ -259,7 +259,7 @@ generated quantities {
 
   // Statistic S1 (paper Section 5): the absolute correlation of the treated
   // unit's predictive replicate with time, a summary of monotone trend.
-  real time_cor_pred = abs(pearson_cor(Y_pred[:, 1], times));
+  real time_cor_pred = abs(pearson_cor(Y_pred[:, 2], times));
 
   // Statistic S2 (paper Section 5): the association across untreated units
   // between (i) each unit's correlation with the treated unit and (ii) its

@@ -123,7 +123,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
                             data = test_ys,
                             autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
-                            include_ints = TRUE, int_scale = 10, #max(overall_scales)
+                            include_ints = TRUE, int_scale = 10,
                             type = "posterior", quiet = TRUE, iter = 500,
                             n_chains = 1, seed = fit_seeds[2])
   fits$ints$name <- "ints"
@@ -216,9 +216,9 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 3,
-  N_comps = c(2),
-  sims = c(0.7),
+  reps = 300,
+  N_comps = c(2, 3),
+  sims = c(0.7, 0.9),
   seed = 52918
 )
 

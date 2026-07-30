@@ -7,7 +7,7 @@ library(foreach)
 library(doParallel)
 library(doRNG)
 
-cl <- makeCluster(detectCores() - 1, outfile = "")
+cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
 
 # Quietly pre-attach the packages the workers need. `outfile = ""` surfaces all
@@ -187,7 +187,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 2 #2000
+study_reps <- 1000 #2000
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
