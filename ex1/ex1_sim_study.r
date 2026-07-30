@@ -8,7 +8,16 @@ library(doParallel)
 library(doRNG)
 library(purrr)
 
-cl <- makeCluster(round(detectCores() / 2) - 1, outfile = "")
+# Worker count: pass as the first CLI arg (e.g. `Rscript ex1_sim_study.r 4`),
+# otherwise a conservative default. (Apple Silicon has no hyperthreading, so base
+# this on physical cores and do not oversubscribe.)
+requested_cores <- suppressWarnings(as.integer(commandArgs(trailingOnly = TRUE)[1]))
+n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
+  requested_cores
+} else {
+  max(1, round(detectCores() / 2) - 1)
+}
+cl <- makeCluster(n_cores, outfile = "")
 registerDoParallel(cl)
 
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
