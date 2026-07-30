@@ -18,6 +18,8 @@ functions {
 
     int T = num_elements(innovations);
     vector[T] ar_process;
+    // Scale the innovations so the AR(1) has unit marginal variance (stationary;
+    // paper Section 2).
     real scale_inno = sqrt(1 - square(autocor));
 
     ar_process[1] = innovations[1];
@@ -82,6 +84,13 @@ transformed data {
   if(nonstationary) {
     Y_outcome = first_diffs(Y);
 
+    // errors_cov is the differenced-error covariance divided by 2v, where v is the
+    // iid level-error variance (square(tau*sigma[n])). Differencing iid level
+    // errors gives d_1 = eps_1 (the level, variance v) and d_t = eps_t - eps_{t-1}
+    // for t>1 (variance 2v, lag-1 covariance -v). Scaling this matrix by 2v (as
+    // Y_prior and error_precisions do) reproduces that exactly: the [1,1]=0.5
+    // corner encodes the level's half-variance; the interior is the MA(1)
+    // correlation (1 on the diagonal, -0.5 off).
     errors_cov[1,1] = 0.5;
     errors_cov[1,2] = -0.5;
     errors_cov[2,1] = -0.5;
@@ -100,6 +109,11 @@ transformed data {
     errors_cov = errors_precision;
   }
 
+  // Treatment-effect prior precision. delta_raw enters Y_means on the model's
+  // working (differenced, when nonstationary) scale, so it borrows the error
+  // covariance structure -- the leading num_treated block of errors_cov, whose
+  // level corner seeds the integrated delta = cumsum(delta_raw). Scaled to the
+  // treated unit's error scale by sigma[1] in the prior below.
   matrix[num_treated, num_treated] effects_prec = inverse_spd(errors_cov[1:num_treated, 1:num_treated]);
 
 
@@ -113,6 +127,8 @@ parameters {
   matrix[T_times, K_latent] Phi_innovations;
   vector<lower=0, upper=1>[K_latent] rho;
 
+  // Lower-triangular loadings (cholesky_factor_cov) fix the factor rotation for
+  // identifiability: unit n loads only on the first min(K, n) factors.
   cholesky_factor_cov[M_units, K_latent] Lambda;
 
   vector[unit_intercepts ? M_units : 0] gamma_raw;
@@ -139,6 +155,7 @@ transformed parameters {
 
   vector<lower=0>[M_units] error_precisions = square(inv(tau * sigma));
   if(nonstationary) {
+    // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
   }
 
@@ -278,16 +295,10 @@ generated quantities {
     loc_cor_pred = pearson_cor(cor_with_treated, unit_location);
   }
 
-  matrix[T_times, M_units] Y0_pred;
-  for(n in 1:M_units) {
-    Y0_pred[:,n] = Y_means_0[,n] + multi_normal_rng(rep_vector(0, T_times), inv(error_precisions[n]) * errors_cov);
-  }
-  if(nonstationary) {
-    for(n in 1:M_units) {
-      Y0_pred[:,n] = cumulative_sum(Y0_pred[,n]);
-    }
-  }
-
+  // Model-implied absolute cross-sectional correlation between the treated unit
+  // and each other unit: the factor covariance (Lambda_tr . Lambda_un) over the
+  // product of total standard deviations (factor variance plus idiosyncratic
+  // variance var = 1 / error_precisions).
   vector[M_units - 1] abs_cors;
   {
     row_vector[K_latent] Lambda_tr = Lambda[1,:];

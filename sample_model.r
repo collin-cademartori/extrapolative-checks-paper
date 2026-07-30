@@ -21,10 +21,9 @@ sample_model <- function(
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))
 
-  # Draw the draw-shuffle index *before* $sample(). cmdstanr's $sample() advances
-  # R's RNG by a non-deterministic (and worker-count-dependent) amount, so drawing
-  # this afterward would make the returned draw ordering irreproducible even with a
-  # fixed Stan seed. The index only permutes 1:iter, so it needs no draws yet.
+  # Draw the shuffle index *before* $sample(): cmdstanr's $sample() advances R's
+  # global RNG, so drawing it afterward would make the draw ordering
+  # irreproducible. Invariant: this must precede the fit.
   sample_index <- sample.int(iter, size = iter)
 
   stat_data <- list(

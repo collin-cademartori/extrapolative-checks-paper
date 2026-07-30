@@ -13,7 +13,7 @@ load("sim_study_ints.RData")
 perc_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
-    mean_perc_nint = mean(nint_pred_perc),
+    mean_perc_no_ints = mean(no_ints_pred_perc),
     mean_perc_ints = mean(ints_pred_perc),
     .groups = "drop"
   )
@@ -26,7 +26,7 @@ print(perc_summary)
 loc_cor_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
-    mean_loc_cor_nint = mean(nint_loc_cor_pval),
+    mean_loc_cor_no_ints = mean(no_ints_loc_cor_pval),
     mean_loc_cor_ints = mean(ints_loc_cor_pval),
     .groups = "drop"
   )
@@ -35,7 +35,6 @@ cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-i
 print(loc_cor_summary)
 
 sim_study_std_err <- abs(sim_study_ints) |>
-  # select(contains("absz_")) |>
   pivot_longer(
     cols = contains("absz_"),
     names_to = c(".value", "time"),
@@ -48,8 +47,8 @@ sim_study_std_err <- abs(sim_study_ints) |>
   ) |>
   group_by(time, sim_f, num_f) |>
   summarize(
-    ni_mean = mean(nint_absz),
-    ni_se = sd(nint_absz) / sqrt(n()),
+    ni_mean = mean(no_ints_absz),
+    ni_se = sd(no_ints_absz) / sqrt(n()),
     it_mean = mean(ints_absz),
     it_se = sd(ints_absz) / sqrt(n()),
     .groups = "drop"
@@ -89,7 +88,7 @@ sim_study_overfit <- abs(sim_study_ints) |>
     cols = !c(num_comp, sim),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
-    names_pattern = "^([^_]+)_(.*)$"
+    names_pattern = "^(no_ints|ints)_(.*)$"
   ) |>
   filter(num_comp == 3) |>
   mutate(
@@ -107,7 +106,7 @@ sim_study_overfit <- abs(sim_study_ints) |>
   ) |>
   mutate(
     model = fct_recode(as.factor(model),
-      `No Int` = "nint",
+      `No Int` = "no_ints",
       `With Int` = "ints"),
     time = paste0("Time ", time)
   ) |>

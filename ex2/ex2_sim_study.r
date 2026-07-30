@@ -12,11 +12,8 @@ library(purrr)
 cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
 
-# Quietly pre-attach the packages the workers need. `outfile = ""` surfaces all
-# worker output, so otherwise each worker's package startup banners
-# (cmdstanr/posterior, and foreach/rngtools via doRNG) would clutter the console
-# on first task dispatch. Pre-attaching them here silences that -- an
-# already-attached package is re-attached with no banner.
+# Pre-attach the workers' packages quietly, so their startup banners don't clutter
+# the console (outfile = "" surfaces all worker output).
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
@@ -32,24 +29,30 @@ ruv <- function(d) {
   return(uv)
 }
 
-# Per-worker progress: each worker keeps a running count of the tasks it has
-# completed (persisted in its own session via the global `.worker_done`) and
-# prints a tagged line, so the workers' pace can be compared at a glance. No
-# inter-process communication -- each line is self-contained.
+# Per-worker progress: each worker prints a running count of the tasks it has
+# completed, so the workers' pace can be compared at a glance.
 worker_progress <- function(label) {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
   message(sprintf("[worker %d] %3d done | %s", Sys.getpid(), n, label))
 }
 
+# Adversarial DGP for the intercepts example (paper Section 5): untreated units
+# split into three groups differing in their pre-treatment correlation with the
+# treated unit and their long-run average, so location and correlation are
+# entangled in a way the unit-intercepts model wrongly assumes independent.
 sim_model_intercepts <- function(
   N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
 
     f_treat <- arima.sim(model = list(ar = 0.96), n = T_times)
 
-    f_alt <- f_treat + 
+    # f_alt matches the treated factor pre-treatment, then diverges downward over
+    # the treatment window -- the driver of the "spurious" comparators.
+    f_alt <- f_treat +
       c(rep(0, T_times - T_treated), (-1 / 2) * seq(T_treated))
-    
+
+    # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
+    # with the treated factor.
     f_unc <- matrix(nrow = K_unc, ncol = T_times)
     cor_unc <- Inf
     while(cor_unc > 0.4) {
@@ -66,20 +69,26 @@ sim_model_intercepts <- function(
     loads <- matrix(nrow = N_units, ncol = K_gen)
 
     loads[1, ] <- c(1, rep(0, K_gen - 1))
-    
+
+    # True comparators load on the treated factor (genuine correlation throughout).
     for(n in 1:N_comp_true) {
       loads[1 + n, ] <- c(sqrt(0.9), 0, sqrt(1 - 0.9) * ruv(K_gen - 2))
     }
 
+    # Spurious comparators load on f_alt (pre-treatment correlation only).
     for(n in 1:N_comp_spur) {
       loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
     }
 
+    # Uncorrelated units.
     for(n in 1:N_unc) {
       loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0 , ruv(K_gen - 2))
     }
 
     lat <- loads %*% facs
+    # Intercepts are the units' long-run averages: the treated and true comparators
+    # sit high, the spurious comparators low -- so correlation with the treated does
+    # not determine location, contrary to the unit-intercepts model's assumption.
     intercepts <- c(
       5, rep(5, N_comp_true),
       rep(1, N_comp_spur),
@@ -99,23 +108,21 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   T_times <- nrow(test_ys)
   overall_scales <- apply(test_ys, 2, sd)
 
-  # Draw both Stan seeds up front, before any sample_model() call. cmdstanr's
-  # $sample() advances R's RNG by a worker-count-dependent amount, so a seed
-  # drawn *after* a fit would be misaligned across different numbers of workers,
-  # breaking reproducibility. Drawing them here (under the task's doRNG stream)
-  # keeps them deterministic.
+  # Draw both Stan seeds up front, before any sample_model() call: cmdstanr's
+  # $sample() advances R's global RNG, so a seed drawn after a fit would not be
+  # reproducible. Invariant: never derive a seed after a fit.
   fit_seeds <- sample.int(.Machine$integer.max, 2)
 
   fits <- list()
 
-  fits$nint <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
+  fits$no_ints <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
                             overall_scales = overall_scales, err_scale = 0.2,
                             data = test_ys,
                             autocor_a = 90, autocor_b = 10,
                             nonstationary = FALSE, num_treated = 5,
                             type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
                             n_chains = 1, seed = fit_seeds[1])
-  fits$nint$name <- "nint"
+  fits$no_ints$name <- "no_ints"
 
   fits$ints <- sample_model(N_units = 10, T_times = 20, K_latent = K_latent,
                             overall_scales = overall_scales, err_scale = 0.2,
@@ -171,19 +178,16 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
 }
 
 run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
-  # Functions called inside the worker must be exported explicitly; foreach does
-  # not auto-export them (K_latent, a local variable, is auto-exported).
-  # posterior is attached because sample_model() calls extract_variable_array()
-  # unqualified.
+  # Worker-called functions must be exported explicitly (foreach only auto-exports
+  # locals like K_latent); posterior is attached for sample_model()'s unqualified
+  # extract_variable_array() call.
   exp_vars <- c('run_sim_intercepts', 'sim_model_intercepts', 'ruv',
                 'worker_progress', 'sample_model', 'ife_mod')
   exp_packages <- c('cmdstanr', 'posterior')
 
-  # Flatten the sim x N_comp x rep design into a single (non-nested) stream of
-  # tasks. A single foreach lets %dorng% give each task an independent,
-  # reproducible RNG substream derived from `seed`, invariant to the number of
-  # workers -- doRNG does not support the nested %:% form. The rep column only
-  # sets the number of replicates per condition.
+  # Flatten the sim x N_comp x rep design into a single (non-nested) foreach, so
+  # %dorng% gives each task a reproducible RNG stream invariant to worker count.
+  # Invariant: keep this a single, non-nested loop.
   grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, sim = sims)
 
   cat(sprintf(

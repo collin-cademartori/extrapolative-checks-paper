@@ -17,7 +17,7 @@ load("sim_study_ns.RData")
 # least 99% for every model, so the check cannot rule out the misspecified model
 # (paper Section 5) -- and the S1 time-correlation predictive p-value, averaged
 # over the study for each model.
-models <- c("nonstat", "stat2", "stat1")
+models <- c("nonstat", "stat_weak", "stat_strong")
 num_summary <- cbind(
   coverage   = colMeans(sim_study_stat[paste0(models, "_pred_perc")]),
   `S1 p-val` = colMeans(sim_study_stat[paste0(models, "_time_cor_pval")])
@@ -28,7 +28,7 @@ cat("\nPer-model 99% interval coverage and S1 time-correlation predictive p-valu
 print(round(num_summary, 3))
 
 # Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
-# weaker-prior stationary ("st", i.e. stat2) models, for a given per-time
+# weaker-prior stationary ("st", i.e. stat_weak) models, for a given per-time
 # statistic: the signed error "mean" or the standardized error "absz".
 summarize_error <- function(stat) {
   abs(sim_study_stat) |>
@@ -43,8 +43,8 @@ summarize_error <- function(stat) {
     summarize(
       ns_mean = mean(.data[[paste0("nonstat_", stat)]]),
       ns_se   = sd(.data[[paste0("nonstat_", stat)]]) / sqrt(n()),
-      st_mean = mean(.data[[paste0("stat2_", stat)]]),
-      st_se   = sd(.data[[paste0("stat2_", stat)]]) / sqrt(n()),
+      st_mean = mean(.data[[paste0("stat_weak_", stat)]]),
+      st_se   = sd(.data[[paste0("stat_weak_", stat)]]) / sqrt(n()),
       .groups = "drop"
     ) |>
     mutate(
@@ -92,7 +92,7 @@ sim_study_overfit <- abs(sim_study_stat) |>
     cols = everything(),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
-    names_pattern = "^([^_]+)_(.*)$"
+    names_pattern = "^(nonstat|stat_weak|stat_strong)_(.*)$"
   ) |>
   # Second pivot only over the time-indexed columns (name ends in _<digit>);
   # the scalar per-model stats (pred_mad, pred_perc, ...) are left untouched, so
@@ -112,8 +112,8 @@ sim_study_overfit <- abs(sim_study_stat) |>
   mutate(
     model = fct_recode(as.factor(model),
       "Nonstat" = "nonstat",
-      "Weaker" = "stat2",
-      "Stronger" = "stat1"),
+      "Weaker" = "stat_weak",
+      "Stronger" = "stat_strong"),
     time = paste0("Time ", time)
   )
 

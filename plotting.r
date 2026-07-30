@@ -1,4 +1,5 @@
-plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y = TRUE) {
+plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y = TRUE,
+                            n_x_breaks = NULL) {
 
   ys <- data$ys
 
@@ -23,6 +24,11 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
     theme(strip.background = element_rect(fill = "white", color = "black")) +
     xlab("Time") +
     ylab("Outcome")
+
+  # Thin the x-axis ticks (e.g. for long horizons where the default breaks collide).
+  if (!is.null(n_x_breaks)) {
+    plot <- plot + scale_x_continuous(n.breaks = n_x_breaks)
+  }
 
   if (hide_y) {
     plot <- plot +

@@ -3,9 +3,8 @@
 source("../sample_model.r")
 source("../plotting.r")
 
-# Seed controls the prior predictive sample produced by Stan
-# This seed reproduces exact figures from paper. Change to 
-# vary the prior predictive sample.
+# This seed reproduces the paper's figures; change it to vary the prior
+# predictive sample.
 seed <- 72385614
 
 N_units <- 8
@@ -39,7 +38,7 @@ stat_prior_data_long <- sample_model(N_units = N_units, T_times = 500,
 
 stat_plot_ppc_long <- plot_data_units(
   stat_prior_data_long,
-  unit = 1, samples = 14
+  unit = 1, samples = 14, n_x_breaks = 3
 )
 ggsave(stat_plot_ppc_long, file="../figs/ppc_stat_long.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
 

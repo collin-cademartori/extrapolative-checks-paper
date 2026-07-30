@@ -11,10 +11,8 @@ library(purrr)
 cl <- makeCluster(round(detectCores()/2) - 1, outfile = "")
 registerDoParallel(cl)
 
-# Quietly pre-attach the packages the workers need. `outfile = ""` surfaces all
-# worker output, so otherwise each worker's package startup banners would clutter
-# the console on first task dispatch. Pre-attaching them here silences that -- an
-# already-attached package is re-attached with no banner.
+# Pre-attach the workers' packages quietly, so their startup banners don't clutter
+# the console (outfile = "" surfaces all worker output).
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
@@ -27,10 +25,8 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
 source("../sample_model.r")
 source("../plotting.r")
 
-# Per-worker progress: each worker keeps a running count of the tasks it has
-# completed (persisted in its own session via the global `.worker_done`) and
-# prints a tagged line, so the workers' pace can be compared at a glance. No
-# inter-process communication -- each line is self-contained.
+# Per-worker progress: each worker prints a running count of the tasks it has
+# completed, so the workers' pace can be compared at a glance.
 worker_progress <- function(label) {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
@@ -42,11 +38,12 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
   overall_scales_stat <- apply(test_ys, 2, sd)
+  # For the nonstationary fit, estimate scale on the differenced series.
   overall_scales_nonstat <- apply(test_ys, 2, function(y) sd(diff(y)))
 
-  # Draw all three Stan seeds up front, before any sample_model() call. cmdstanr's
-  # $sample() advances R's RNG by a worker-count-dependent amount, so a seed drawn
-  # after a fit would be misaligned across worker counts, breaking reproducibility.
+  # Draw all three Stan seeds up front, before any sample_model() call: cmdstanr's
+  # $sample() advances R's global RNG, so a seed drawn after a fit would not be
+  # reproducible. Invariant: never derive a seed after a fit.
   fit_seeds <- sample.int(.Machine$integer.max, 3)
 
   fits <- list()
@@ -64,7 +61,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   )
   fits$nonstat$name <- "nonstat"
 
-  fits$stat2 <- sample_model(
+  fits$stat_weak <- sample_model(
     overall_scales = overall_scales_stat, err_scale = 0,
     err_scale_mean = 0.1,
     err_scale_sd = 0.1,
@@ -75,9 +72,9 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     iter = 400,
     n_chains = 1, seed = fit_seeds[2]
   )
-  fits$stat2$name <- "stat2"
+  fits$stat_weak$name <- "stat_weak"
 
-  fits$stat1 <- sample_model(
+  fits$stat_strong <- sample_model(
     overall_scales = overall_scales_stat, err_scale = 0.05,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
@@ -86,7 +83,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     iter = 400,
     n_chains = 1, seed = fit_seeds[3]
   )
-  fits$stat1$name <- "stat1"
+  fits$stat_strong$name <- "stat_strong"
 
   res <- fits |> map(function(pfit) {
 
@@ -126,14 +123,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   }) |> list_flatten()
 
   pns_means <- apply(fits$nonstat$y_means, c(2,3), mean)
-  p2_means <- apply(fits$stat2$y_means, c(2,3), mean)
-  p1_means <- apply(fits$stat1$y_means, c(2,3), mean)
+  p2_means <- apply(fits$stat_weak$y_means, c(2,3), mean)
+  p1_means <- apply(fits$stat_strong$y_means, c(2,3), mean)
 
   fit_plot <- plot_post_fits_all(test_ys, pns_means, p2_means, p1_means)
   ggsave(fit_plot, file=paste0("../figs/sim_stat_figs/post_fit_plot_", i, ".png"), create.dir = TRUE)
 
   if (post_check) {
-    check_plot <- plot_data_matrix_post(test_ys, fits$stat2$y_pred)
+    check_plot <- plot_data_matrix_post(test_ys, fits$stat_weak$y_pred)
     ggsave(
         check_plot, file=paste0("../figs/sim_stat_figs/check_plot_", i, ".pdf"),
         device = "pdf", height = 4, width = 8, create.dir = TRUE
@@ -168,7 +165,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   t0 <- Sys.time()
 
   # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
-  # substream from `seed`, invariant to the number of workers.
+  # stream invariant to worker count. Invariant: keep this a single, non-nested loop.
   study_res <-
     foreach(
       s = study_units, iter = seq(reps),

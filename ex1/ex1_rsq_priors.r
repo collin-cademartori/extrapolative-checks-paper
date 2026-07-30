@@ -33,7 +33,6 @@ overall_scales_stat <- rep(1,8)
 overall_scales_nonstat <- rep(1,8)
 
 nonstat_prior_data <- sample_model(overall_scales = 0.5 * overall_scales_nonstat, 
-                                   #err_scale = 3,
                                    err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
                                    data = NULL,
                                    autocor_a = 8, autocor_b = 2,
@@ -58,7 +57,7 @@ stat_prior_data1 <- sample_model(overall_scales = 2 * overall_scales_stat,
                                 nonstationary = FALSE, num_treated = 0,
                                 type = "prior_pred", K_latent = 7, iter = 6000)
 
-stat1_rsq <- apply(stat_prior_data1$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r.squared)
+stat_strong_rsq <- apply(stat_prior_data1$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r.squared)
 
 weak_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
                                 err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
@@ -71,7 +70,7 @@ weak_rsq <- apply(weak_prior_data$ys[,,1], 1, \(x) summary(lm(x ~ seq(1, 20)))$r
 
 rsqs <- list(
   `Nonstationary` = nonstat_rsq,
-  `Stronger Prior` = stat1_rsq,
+  `Stronger Prior` = stat_strong_rsq,
   `Weaker Prior` = stat_rsq,
   `Vague Prior` = weak_rsq
 )
