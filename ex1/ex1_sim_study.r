@@ -38,7 +38,9 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
   overall_scales_stat <- apply(test_ys, 2, sd)
-  # For the nonstationary fit, estimate scale on the differenced series.
+  # For the nonstationary fit, sigma scales the *differenced* series (the model fits
+  # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
+  # be the wrong, inflating scale for integrated data.
   overall_scales_nonstat <- apply(test_ys, 2, function(y) sd(diff(y)))
 
   # Draw all three Stan seeds up front, before any sample_model() call: cmdstanr's

@@ -77,13 +77,13 @@ plot_error_bands <- function(df, y_label, label) {
 
 sim_study_abs_err <- summarize_error("mean")
 abs_mad_plot <- plot_error_bands(
-  sim_study_abs_err, "Mean Absolute Error (Posterior Mean)", "(A)"
+  sim_study_abs_err, "Average Absolute Error of Posterior\n Expected Treatment Effect", "(A)"
 )
 ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_abs_err.pdf", create.dir = TRUE)
 
 sim_study_std_err <- summarize_error("absz")
 std_err_plot <- plot_error_bands(
-  sim_study_std_err, "Mean Standardized Error (Posterior Mean)", "(B)"
+  sim_study_std_err, "Average Standardized Error of Posterior\n Expected Treatment Effect", "(B)"
 )
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_std_err.pdf", create.dir = TRUE)
 
@@ -121,8 +121,8 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_mad, y = mean_absz, group = time), linewidth = 0.8) +
   geom_label(aes(label = model, x = mean_mad, y = mean_absz), size = 3) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
-  xlab("Average Error (MAD)") +
-  ylab("Mean Standardized Error (Posterior Mean)") +
+  xlab("Average MAD of Posterior\n Predictive Expectation") +
+  ylab("Average Standardized Error of Posterior Expected Treatment Effect") +
   scale_x_continuous(expand = expansion(mult = 0.3)) +
   scale_y_continuous(expand = expansion(mult = 0.2)) +
   theme_bw() +

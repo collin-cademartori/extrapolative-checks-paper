@@ -129,8 +129,8 @@ plot_data_matrix_post <- function(ys, post_ys) {
   return(plot)
 }
 
-# Plot all time series in one frame with 
-# highlighting for those most similar to the treated unit
+# Plot all series in one frame: grey for the rest, blue for the units most
+# correlated with the treated unit, and red for the treated unit itself.
 plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_samples = 9) {
   trans <- ifelse(use_exp, exp, function(x) x)
 
@@ -160,7 +160,11 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
   ys_long <- ys_long |>
     left_join(cor_cuts, by = "sample") |>
     mutate(
-      is_comp = ifelse(cor_y1 >= cor_cut, "comp", "notcomp")
+      is_comp = case_when(
+        unit == "A" ~ "treated",       # the treated unit itself
+        cor_y1 >= cor_cut ~ "comp",    # top cor_perc% most correlated with treated
+        TRUE ~ "notcomp"
+      )
     ) |>
     mutate(obs = trans(obs)) |>
     select(-obs1) |>
@@ -177,6 +181,10 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
       x = time, y = obs,
       group = unit
     ), color = "#3a3aff", alpha = 1) +
+    geom_line(data = filter(ys_long, is_comp == "treated"), aes(
+      x = time, y = obs,
+      group = unit
+    ), color = "#e41a1c", linewidth = 0.8, alpha = 1) +
     facet_wrap(vars(sample), nrow = 2, scales = "free_y") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
