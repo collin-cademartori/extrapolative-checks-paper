@@ -189,7 +189,7 @@ transformed parameters {
 model {
 
   if(fit_overall_scales == 1) {
-    sigma_raw ~ normal(0, 5); // Used to be cauchy(2,5)
+    sigma_raw ~ normal(0, 5);
   }
 
   if(tau_val == 0) {
@@ -257,7 +257,7 @@ generated quantities {
     }
   }
 
-  // Statistic S1 (paper Section 5): the absolute correlation of the treated
+  // Statistic S1 (paper Section 5): the absolute correlation of the first untreated
   // unit's predictive replicate with time, a summary of monotone trend.
   real time_cor_pred = abs(pearson_cor(Y_pred[:, 2], times));
 

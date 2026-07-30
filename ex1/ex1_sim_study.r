@@ -53,8 +53,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
 
   fits$nonstat <- sample_model(
     overall_scales = overall_scales_nonstat, err_scale = 0,
-    err_scale_mean = 2, # 3
-    err_scale_sd = 2, # 2
+    err_scale_mean = 2,
+    err_scale_sd = 2,
     data = test_ys,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 5,
@@ -66,8 +66,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
 
   fits$stat2 <- sample_model(
     overall_scales = overall_scales_stat, err_scale = 0,
-    err_scale_mean = 0.1, # 0.2
-    err_scale_sd = 0.1, # 0.2
+    err_scale_mean = 0.1,
+    err_scale_sd = 0.1,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
@@ -78,9 +78,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   fits$stat2$name <- "stat2"
 
   fits$stat1 <- sample_model(
-    overall_scales = overall_scales_stat, err_scale = 0.05, #0.05
-    # err_scale_mean = 0.1, # 0.1
-    # err_scale_sd = 0.01, # 0.5
+    overall_scales = overall_scales_stat, err_scale = 0.05,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
@@ -188,7 +186,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 1000 #2000
+study_reps <- 1000
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
@@ -197,6 +195,3 @@ stopCluster(cl)
 # ex1_sim_study_summary.r (run it to view the results).
 save(sim_study_stat, file="sim_study_ns.RData")
 cat("Results saved to sim_study_ns.RData -- run ex1_sim_study_summary.r to summarize.\n")
-
-# study_reps <- 1
-# sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318, post_check = TRUE)

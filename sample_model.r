@@ -21,13 +21,11 @@ sample_model <- function(
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))
 
-  full_size <- iter
-
   # Draw the draw-shuffle index *before* $sample(). cmdstanr's $sample() advances
   # R's RNG by a non-deterministic (and worker-count-dependent) amount, so drawing
   # this afterward would make the returned draw ordering irreproducible even with a
   # fixed Stan seed. The index only permutes 1:iter, so it needs no draws yet.
-  sample_index <- sample.int(full_size, size = iter)
+  sample_index <- sample.int(iter, size = iter)
 
   stat_data <- list(
     M_units = N_units,

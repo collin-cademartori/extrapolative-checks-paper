@@ -131,15 +131,10 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
   yis <- sample.int(dim(data$ys)[1], size = num_samples)
   ys <- data$ys[yis, , ]
 
-  # cor_level <- quantile(cor(ys)[1,], cor_perc)
-  cor_level <- 0.8
-
   ys_long <- as.data.frame.table(ys)
   names(ys_long) <-  c("sample", "time", "unit", "obs")
 
   ys_long$time <- as.integer(ys_long$time)
-  #levels(ys_long$unit) <- paste0("Unit ", levels(ys_long$unit))
-  # levels(ys_long$sample) <- paste0("Sample ", levels(ys_long$sample))
 
   y1 <- ys_long |> filter(unit == "A") |>
         select(time, sample, obs1 = obs)
@@ -161,7 +156,6 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     mutate(
       is_comp = ifelse(cor_y1 >= cor_cut, "comp", "notcomp")
     ) |>
-    # ungroup() |>
     mutate(obs = trans(obs)) |>
     select(-obs1) |>
     select(-cor_cut)
@@ -178,10 +172,6 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
       group = unit
     ), color = "#3a3aff", alpha = 1) +
     facet_wrap(vars(sample), nrow = 2, scales = "free_y") +
-    # scale_y_continuous(limits = c(
-    #   ifelse(use_exp, 0, -6),
-    #   ifelse(use_exp, 160, 6)
-    # )) +
     theme_bw() +
     theme(panel.grid = element_blank()) +
     theme(strip.background = element_rect(fill = "white", color = "black")) +

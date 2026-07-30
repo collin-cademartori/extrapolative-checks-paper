@@ -45,8 +45,6 @@ worker_progress <- function(label) {
 sim_model_intercepts <- function(
   N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
 
-    treat_time <- T_times - T_treated + 1
-    
     f_treat <- arima.sim(model = list(ar = 0.96), n = T_times)
 
     f_alt <- f_treat + 
@@ -83,9 +81,9 @@ sim_model_intercepts <- function(
 
     lat <- loads %*% facs
     intercepts <- c(
-      1, rnorm(N_comp_true, mean = 1, sd = 0), 
-      rnorm(N_comp_spur, mean = -5, sd = 0),
-      rnorm(N_unc, mean = 0, sd = 1)
+      5, rep(5, N_comp_true),
+      rep(1, N_comp_spur),
+      rnorm(N_unc, mean = 2.5, sd = 1)
     )
     
     Y <- lat + intercepts + rnorm(N_units * T_times, sd = 0.02)
