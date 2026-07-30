@@ -14,7 +14,7 @@ plot_prior_absr <- function(absrs) {
 
   prior_plot <- ggplot(absr_df) +
     facet_wrap(vars(model), ncol = 1, scales = "free_y", strip.position = "left") +
-    geom_histogram(aes(x=absr), fill = "#aaaaaa", color = "#aaaaaa") +
+    geom_histogram(aes(x = absr), fill = "#aaaaaa", color = "#aaaaaa") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
     theme(strip.background = element_rect(fill = "white", color = "black")) +
@@ -27,47 +27,54 @@ plot_prior_absr <- function(absrs) {
     ggtitle("(A)")
 
   return(prior_plot)
-    
 }
 
-overall_scales_stat <- rep(1,8)
-overall_scales_nonstat <- rep(1,8)
+overall_scales_stat <- rep(1, 8)
+overall_scales_nonstat <- rep(1, 8)
 
-nonstat_prior_data <- sample_model(overall_scales = 0.5 * overall_scales_nonstat, 
-                                   err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
-                                   data = NULL,
-                                   autocor_a = 8, autocor_b = 2,
-                                   nonstationary = TRUE, num_treated = 0,
-                                   type = "prior_pred", K_latent = 7, iter = 6000)
+nonstat_prior_data <- sample_model(
+  overall_scales = 0.5 * overall_scales_nonstat,
+  err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
+  data = NULL,
+  autocor_a = 8, autocor_b = 2,
+  nonstationary = TRUE, num_treated = 0,
+  type = "prior_pred", K_latent = 7, iter = 6000
+)
 
-nonstat_absr <- apply(nonstat_prior_data$ys[,,1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-stat_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
-                                err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
-                                data = NULL,
-                                autocor_a = 97, autocor_b = 3,
-                                nonstationary = FALSE, num_treated = 0,
-                                type = "prior_pred", K_latent = 7, iter = 6000)
+stat_prior_data <- sample_model(
+  overall_scales = 2 * overall_scales_stat,
+  err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
+  data = NULL,
+  autocor_a = 97, autocor_b = 3,
+  nonstationary = FALSE, num_treated = 0,
+  type = "prior_pred", K_latent = 7, iter = 6000
+)
 
-stat_absr <- apply(stat_prior_data$ys[,,1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-stat_prior_data1 <- sample_model(overall_scales = 2 * overall_scales_stat, 
-                                err_scale = 0.05,
-                                data = NULL,
-                                autocor_a = 97, autocor_b = 3,
-                                nonstationary = FALSE, num_treated = 0,
-                                type = "prior_pred", K_latent = 7, iter = 6000)
+stat_prior_data1 <- sample_model(
+  overall_scales = 2 * overall_scales_stat,
+  err_scale = 0.05,
+  data = NULL,
+  autocor_a = 97, autocor_b = 3,
+  nonstationary = FALSE, num_treated = 0,
+  type = "prior_pred", K_latent = 7, iter = 6000
+)
 
-stat_strong_absr <- apply(stat_prior_data1$ys[,,1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-weak_prior_data <- sample_model(overall_scales = 2 * overall_scales_stat, 
-                                err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
-                                data = NULL,
-                                autocor_a = 97, autocor_b = 3,
-                                nonstationary = FALSE, num_treated = 0,
-                                type = "prior_pred", K_latent = 7, iter = 6000)
+weak_prior_data <- sample_model(
+  overall_scales = 2 * overall_scales_stat,
+  err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
+  data = NULL,
+  autocor_a = 97, autocor_b = 3,
+  nonstationary = FALSE, num_treated = 0,
+  type = "prior_pred", K_latent = 7, iter = 6000
+)
 
-weak_absr <- apply(weak_prior_data$ys[,,1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+weak_absr <- apply(weak_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 absrs <- list(
   `Nonstationary` = nonstat_absr,

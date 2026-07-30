@@ -132,7 +132,8 @@ sim_study_overfit <- abs(sim_study_ints) |>
   mutate(
     model = fct_recode(as.factor(model),
       `No Int` = "no_ints",
-      `With Int` = "ints"),
+      `With Int` = "ints"
+    ),
     time = paste0("Time ", time)
   ) |>
   group_by(time, model, sim) |>

@@ -1,18 +1,17 @@
 plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y = TRUE,
                             n_x_breaks = NULL) {
-
   ys <- data$ys
 
   num_samples <- nrow(ys)
   plot_units <- sample.int(num_samples, size = samples)
   ys_plot <- ys[plot_units, , unit]
 
-  if(!is.null(data_comp)) {
+  if (!is.null(data_comp)) {
     ys_plot <- rbind(data_comp[, unit], ys_plot)
   }
 
   ys_long <- as.data.frame.table(ys_plot)
-  names(ys_long) <-  c("sample", "time", "obs")
+  names(ys_long) <- c("sample", "time", "obs")
   ys_long$time <- as.integer(ys_long$time)
   ys_long$sample <- paste0("Sample ", ys_long$sample)
 
@@ -62,7 +61,7 @@ plot_post_fits_all <- function(data, post_ns, post_2, post_1) {
     geom_line(
       data = ys_long,
       aes(x = time, y = obs), color = "grey"
-    ) + 
+    ) +
     geom_line(
       data = means_ns,
       aes(x = time, y = obs), color = "black"
@@ -88,7 +87,7 @@ plot_post_fits_all <- function(data, post_ns, post_2, post_1) {
 # Plot each unit in a separate frame with posterior predictive samples
 plot_data_matrix_post <- function(ys, post_ys) {
   ys_long <- as.data.frame.table(ys)
-  names(ys_long) <-  c("time", "unit", "obs")
+  names(ys_long) <- c("time", "unit", "obs")
   ys_long$time <- as.integer(ys_long$time)
   ys_long$sample <- 0
 
@@ -101,8 +100,8 @@ plot_data_matrix_post <- function(ys, post_ys) {
   post_ys$unit <- paste0("Unit ", post_ys$unit)
   ys_long$unit <- paste0("Unit ", ys_long$unit)
 
-  post_ys <- post_ys |> 
-    group_by(unit, time) |> 
+  post_ys <- post_ys |>
+    group_by(unit, time) |>
     summarize(
       y_min = quantile(obs, 0.005),
       y_max = quantile(obs, 0.995)
@@ -117,7 +116,7 @@ plot_data_matrix_post <- function(ys, post_ys) {
     geom_line(
       data = ys_long,
       aes(x = time, y = obs),
-      linewidth = 0.1, color="black"
+      linewidth = 0.1, color = "black"
     ) +
     facet_wrap(vars(unit), ncol = 4, scales = "free_y") +
     theme_bw() +
@@ -138,12 +137,13 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
   ys <- data$ys[yis, , ]
 
   ys_long <- as.data.frame.table(ys)
-  names(ys_long) <-  c("sample", "time", "unit", "obs")
+  names(ys_long) <- c("sample", "time", "unit", "obs")
 
   ys_long$time <- as.integer(ys_long$time)
 
-  y1 <- ys_long |> filter(unit == "A") |>
-        select(time, sample, obs1 = obs)
+  y1 <- ys_long |>
+    filter(unit == "A") |>
+    select(time, sample, obs1 = obs)
 
   ys_long <- ys_long |>
     left_join(y1, by = c("time", "sample")) |>
@@ -153,7 +153,8 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     ) |>
     ungroup()
 
-  cor_cuts <- ys_long |> group_by(sample) |> 
+  cor_cuts <- ys_long |>
+    group_by(sample) |>
     summarize(cor_cut = quantile(cor_y1, cor_perc)) |>
     mutate(sample_name = paste0("Sample ", sample, " (", round(cor_cut, 2), ")"))
 
@@ -161,8 +162,8 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     left_join(cor_cuts, by = "sample") |>
     mutate(
       is_comp = case_when(
-        unit == "A" ~ "treated",       # the treated unit itself
-        cor_y1 >= cor_cut ~ "comp",    # top cor_perc% most correlated with treated
+        unit == "A" ~ "treated", # the treated unit itself
+        cor_y1 >= cor_cut ~ "comp", # top cor_perc% most correlated with treated
         TRUE ~ "notcomp"
       )
     ) |>

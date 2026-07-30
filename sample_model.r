@@ -7,16 +7,15 @@ library(dplyr)
 ife_mod <- cmdstan_model(stan_file = "../ife_named.stan")
 
 sample_model <- function(
-  N_units = 8, T_times = 20, K_latent = 4,
-  data = NULL, overall_scales = NULL, err_scale = 0.05,
-  err_scale_mean = 0, err_scale_sd = 0,
-  autocor_a, autocor_b, nonstationary, int_scale = 1, include_ints = FALSE,
-  num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
-  seed = NULL, n_chains = 4
-) {
+    N_units = 8, T_times = 20, K_latent = 4,
+    data = NULL, overall_scales = NULL, err_scale = 0.05,
+    err_scale_mean = 0, err_scale_sd = 0,
+    autocor_a, autocor_b, nonstationary, int_scale = 1, include_ints = FALSE,
+    num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
+    seed = NULL, n_chains = 4) {
   stopifnot(type %in% c("prior_pred", "posterior"))
   stopifnot(0 < autocor_a)
-  stopifnot(0 < autocor_b)  
+  stopifnot(0 < autocor_b)
   stopifnot(K_latent < N_units)
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))
@@ -53,7 +52,7 @@ sample_model <- function(
     iter_warmup = iter,
     iter_sampling = iter,
     adapt_delta = ad,
-    refresh = if(quiet) 0 else 100,
+    refresh = if (quiet) 0 else 100,
     show_exceptions = !quiet,
     show_messages = !quiet,
     seed = seed
@@ -66,7 +65,7 @@ sample_model <- function(
     ys_latent_all <-
       extract_variable_array(model_sample$draws("Y_latent"), "Y_latent")
     ys_latent <- ys_latent_all[sample_index, 1, , ]
-    
+
     return(list(
       ys = ys_prior,
       ys_latent = ys_latent
@@ -81,18 +80,18 @@ sample_model <- function(
     y_pred_post <- y_pred_all[sample_index, 1, , ]
 
     effects <-
-      extract_variable_array(model_sample$draws(), "delta")[,1,]
+      extract_variable_array(model_sample$draws(), "delta")[, 1, ]
     effect_means <- colMeans(effects)
     effect_sds <- apply(effects, 2, sd)
 
     err_scale <- as.numeric(model_sample$draws("tau"))
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
 
-    abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[,1,]
+    abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[, 1, ]
     abs_cors_mean <- colMeans(abs_cors)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
-    abs_cor_data <- abs(cor(data[,2], seq(nrow(data))))
+    abs_cor_data <- abs(cor(data[, 2], seq(nrow(data))))
     time_cor_pval <- mean(abs_cor_pred > abs_cor_data)
 
     # Statistic S2 (paper Section 5) on the pre-treatment window: the correlation
@@ -126,5 +125,4 @@ sample_model <- function(
       loc_cor_pval = loc_cor_pval
     ))
   }
-
 }

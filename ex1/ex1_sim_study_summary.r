@@ -113,7 +113,8 @@ sim_study_overfit <- abs(sim_study_stat) |>
     model = fct_recode(as.factor(model),
       "Nonstat" = "nonstat",
       "Weaker" = "stat_weak",
-      "Stronger" = "stat_strong"),
+      "Stronger" = "stat_strong"
+    ),
     time = paste0("Time ", time)
   )
 
