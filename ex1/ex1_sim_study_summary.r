@@ -57,7 +57,7 @@ summarize_error <- function(stat) {
 
 # Time series of the two models' means with shaded +/-2 SE bands
 # (nonstationary solid, stationary dashed).
-plot_error_bands <- function(df, y_label) {
+plot_error_bands <- function(df, y_label, label) {
   ggplot(data = df) +
     geom_ribbon(
       aes(x = time, ymin = ns_lower, ymax = ns_upper),
@@ -71,18 +71,19 @@ plot_error_bands <- function(df, y_label) {
     geom_line(aes(x = time, y = st_mean), linetype = "dashed") +
     xlab("Post-Treatment Time") +
     ylab(y_label) +
+    ggtitle(label) +
     theme_bw()
 }
 
 sim_study_abs_err <- summarize_error("mean")
 abs_mad_plot <- plot_error_bands(
-  sim_study_abs_err, "Mean Absolute Error (Posterior Mean)"
+  sim_study_abs_err, "Mean Absolute Error (Posterior Mean)", "(A)"
 )
 ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_abs_err.pdf", create.dir = TRUE)
 
 sim_study_std_err <- summarize_error("absz")
 std_err_plot <- plot_error_bands(
-  sim_study_std_err, "Mean Standardized Error (Posterior Mean)"
+  sim_study_std_err, "Mean Standardized Error (Posterior Mean)", "(B)"
 )
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_std_err.pdf", create.dir = TRUE)
 
