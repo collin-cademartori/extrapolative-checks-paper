@@ -18,7 +18,7 @@ n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
 } else {
   max(1, round(detectCores() / 2) - 1)
 }
-cl <- makeCluster(n_cores, outfile = "ex2_study.log")
+cl <- makeCluster(n_cores, outfile = "")
 registerDoParallel(cl)
 
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
@@ -38,12 +38,16 @@ ruv <- function(d) {
   return(uv)
 }
 
-# Per-worker progress: each worker prints a running count of the tasks it has
-# completed, so the workers' pace can be compared at a glance.
-worker_progress <- function(label) {
+# Per-worker progress: each worker appends a running count of completed tasks to a
+# shared log. cat(append = TRUE) flushes every write, so it shows up live via
+# `tail -f progress.log` -- unlike message()/outfile, which block-buffers a
+# redirected stream (nothing appears until the worker exits).
+worker_progress <- function(label, logfile = "progress.log") {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
-  message(sprintf("[worker %d] %3d done | %s", Sys.getpid(), n, label))
+  cat(sprintf("[worker %d] %3d done | %s\n", Sys.getpid(), n, label),
+    file = logfile, append = TRUE
+  )
 }
 
 # Adversarial DGP for the intercepts example (paper Section 5): untreated units
@@ -215,6 +219,7 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
     length(sims) * length(N_comps), reps, nrow(grid),
     getDoParWorkers(), seed
   ))
+  cat("", file = "progress.log") # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
 
   study_res <-

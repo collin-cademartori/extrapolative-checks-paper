@@ -34,12 +34,16 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
 source("../sample_model.r")
 source("../plotting.r")
 
-# Per-worker progress: each worker prints a running count of the tasks it has
-# completed, so the workers' pace can be compared at a glance.
-worker_progress <- function(label) {
+# Per-worker progress: each worker appends a running count of completed tasks to a
+# shared log. cat(append = TRUE) flushes every write, so it shows up live via
+# `tail -f progress.log` -- unlike message()/outfile, which block-buffers a
+# redirected stream (nothing appears until the worker exits).
+worker_progress <- function(label, logfile = "progress.log") {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
-  message(sprintf("[worker %d] %3d done | %s", Sys.getpid(), n, label))
+  cat(sprintf("[worker %d] %3d done | %s\n", Sys.getpid(), n, label),
+    file = logfile, append = TRUE
+  )
 }
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
@@ -179,6 +183,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
     ),
     reps, reps, getDoParWorkers(), seed
   ))
+  cat("", file = "progress.log") # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
 
   # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
