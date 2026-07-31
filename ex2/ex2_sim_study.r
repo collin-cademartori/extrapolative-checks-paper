@@ -32,6 +32,7 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
   library(doRNG)
+  library(purrr)
 })))
 
 source("../sample_model.r")
