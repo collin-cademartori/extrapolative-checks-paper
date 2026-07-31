@@ -34,6 +34,7 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(dplyr)
   library(ggplot2)
   library(doRNG)
+  library(purrr)
 })))
 
 source("../sample_model.r")
