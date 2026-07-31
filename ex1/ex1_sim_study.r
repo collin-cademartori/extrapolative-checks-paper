@@ -17,7 +17,7 @@ n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
 } else {
   max(1, round(detectCores() / 2) - 1)
 }
-cl <- makeCluster(n_cores, outfile = "")
+cl <- makeCluster(n_cores, outfile = "ex1_study.log")
 registerDoParallel(cl)
 
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
