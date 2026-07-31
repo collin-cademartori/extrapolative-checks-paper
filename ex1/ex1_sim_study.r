@@ -188,7 +188,10 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
     ),
     reps, reps, getDoParWorkers(), seed
   ))
-  cat("", file = "progress.log") # truncate: fresh per-worker progress log per run
+  # Absolute log path, so workers write it where the master expects regardless of
+  # their working directory.
+  progress_log <- file.path(getwd(), "progress.log")
+  cat("", file = progress_log) # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
 
   # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
@@ -200,7 +203,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
       .options.RNG = seed
     ) %dorng% {
       unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
-      worker_progress(sprintf("iteration %d (unit %d)", iter, s))
+      worker_progress(sprintf("iteration %d (unit %d)", iter, s), logfile = progress_log)
       unit_res
     }
 

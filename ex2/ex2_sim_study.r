@@ -224,7 +224,10 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
     length(sims) * length(N_comps), reps, nrow(grid),
     getDoParWorkers(), seed
   ))
-  cat("", file = "progress.log") # truncate: fresh per-worker progress log per run
+  # Absolute log path, so workers write it where the master expects regardless of
+  # their working directory.
+  progress_log <- file.path(getwd(), "progress.log")
+  cat("", file = progress_log) # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
 
   study_res <-
@@ -234,7 +237,7 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
       .options.RNG = seed
     ) %dorng% {
       unit_res <- run_sim_intercepts(N_comp = N_comp, sim = sim, K_latent = K_latent)
-      worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i))
+      worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
       as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))
     }
 
