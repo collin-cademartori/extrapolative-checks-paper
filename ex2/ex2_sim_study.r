@@ -21,6 +21,11 @@ n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
 cl <- makeCluster(n_cores, outfile = "")
 registerDoParallel(cl)
 
+# PSOCK workers may start in a different working directory than the master; sync
+# them so worker-side relative paths (progress.log, ggsave to ../figs) resolve the
+# same as here.
+invisible(clusterCall(cl, setwd, getwd()))
+
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
 # the console (outfile = "" surfaces all worker output).
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
