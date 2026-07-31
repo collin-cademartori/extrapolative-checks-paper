@@ -108,9 +108,9 @@ sim_model_intercepts <- function(
   # sit high, the spurious comparators low -- so correlation with the treated does
   # not determine location, contrary to the unit-intercepts model's assumption.
   intercepts <- c(
-    5, rep(5, N_comp_true),
+    10, rep(10, N_comp_true),
     rep(1, N_comp_spur),
-    rnorm(N_unc, mean = 2.5, sd = 1)
+    rnorm(N_unc, mean = 1, sd = 2)
   )
 
   Y <- lat + intercepts + rnorm(N_units * T_times, sd = 0.02)

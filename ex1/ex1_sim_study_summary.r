@@ -20,7 +20,8 @@ load("sim_study_ns.RData")
 models <- c("nonstat", "stat_weak", "stat_strong")
 num_summary <- cbind(
   coverage   = colMeans(sim_study_stat[paste0(models, "_pred_perc")]),
-  `S1 p-val` = colMeans(sim_study_stat[paste0(models, "_time_cor_pval")])
+  `S1 p-val 0.05Q` = apply(sim_study_stat[paste0(models, "_time_cor_pval")], 2, \(x) quantile(x, 0.05)),
+  `S1 p-val 0.95Q` = apply(sim_study_stat[paste0(models, "_time_cor_pval")], 2, \(x) quantile(x, 0.95))
 )
 rownames(num_summary) <- models
 
