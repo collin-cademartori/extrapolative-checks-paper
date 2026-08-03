@@ -228,7 +228,7 @@ model {
   gamma_raw ~ std_normal();
 
   if(num_treated > 0) {
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sigma[1])) * effects_prec);
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(5 * sigma_data[1])) * effects_prec);
   }
 
   if(sample_posterior) {
