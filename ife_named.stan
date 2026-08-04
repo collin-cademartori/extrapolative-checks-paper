@@ -184,7 +184,7 @@ transformed parameters {
   if(nonstationary) {
     for(n in 1:M_units) {
       Y_means_0[:,n] = (sigma[n]) * Lambda_Phi[:,n];
-      Y_means_0[1,n] += sigma[n] * gamma[n];
+      Y_means_0[1,n] += gamma[n];
     }
     Y_means = Y_means_0;
     if(num_treated > 0) {
@@ -192,7 +192,7 @@ transformed parameters {
     }
   } else {
     for(n in 1:M_units) {
-      Y_means_0[:,n] = (sigma[n] * gamma[n]) + (sigma[n] * Lambda_Phi[:,n]);
+      Y_means_0[:,n] = gamma[n] + (sigma[n] * Lambda_Phi[:,n]);
     }
 
     Y_means = Y_means_0;
