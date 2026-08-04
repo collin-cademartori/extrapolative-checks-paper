@@ -62,3 +62,20 @@ nonstat_plot_ppc <- plot_data_units(
   unit = 1, samples = 14
 )
 ggsave(nonstat_plot_ppc, file = "../figs/ppc_nonstat.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
+
+nonstat_prior_data_long <- sample_model(
+  N_units = N_units, T_times = 500,
+  overall_scales = rep(1, N_units),
+  err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
+  data = NULL,
+  autocor_a = 8, autocor_b = 2,
+  nonstationary = TRUE, num_treated = 0,
+  type = "prior_pred", iter = 1000, quiet = FALSE,
+  seed = seed
+)
+
+nonstat_plot_ppc_long <- plot_data_units(
+  nonstat_prior_data_long,
+  unit = 1, samples = 14, n_x_breaks = 3
+)
+ggsave(nonstat_plot_ppc_long, file = "../figs/ppc_nonstat_long.pdf", device = "pdf", width = 7, height = 4, create.dir = TRUE)
