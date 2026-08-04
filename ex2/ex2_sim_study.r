@@ -69,7 +69,7 @@ sim_model_intercepts <- function(
   # f_alt matches the treated factor pre-treatment, then diverges downward over
   # the treatment window -- the driver of the "spurious" comparators.
   f_alt <- f_treat +
-    c(rep(0, T_times - T_treated), -f_treat_sd)
+    c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
   # with the treated factor.
