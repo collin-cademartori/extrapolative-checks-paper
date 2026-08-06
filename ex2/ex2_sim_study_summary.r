@@ -17,6 +17,8 @@ perc_summary <- sim_study_ints |>
     q95_perc_no_ints = quantile(no_ints_pred_perc, 0.95),
     q5_perc_ints = quantile(ints_pred_perc, 0.05),
     q95_perc_ints = quantile(ints_pred_perc, 0.95),
+    mean_perc_ints = mean(ints_pred_perc),
+    mean_perc_no_ints = mean(no_ints_pred_perc)
     .groups = "drop"
   )
 
