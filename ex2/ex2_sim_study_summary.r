@@ -25,7 +25,7 @@ perc_summary <- sim_study_ints |>
   )
 
 cat("\n99% posterior-predictive interval coverage by condition (no-int vs with-int):\n")
-print(perc_summary)
+print(perc_summary, width = Inf)
 
 ## Statistic S2 predictive p-value (see paper Section 5), averaged separately for
 ## each data generating condition (num_comp x sim).
@@ -44,7 +44,7 @@ loc_cor_summary <- sim_study_ints |>
   )
 
 cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-int):\n")
-print(loc_cor_summary)
+print(loc_cor_summary, width = Inf)
 
 # Per-condition mean and +/-2 SE bands over post-treatment time for a per-time
 # statistic, for the no-intercepts and with-intercepts models. stat is "absz"

@@ -26,7 +26,7 @@ num_summary <- cbind(
 rownames(num_summary) <- models
 
 cat("\nPer-model 99% interval coverage and S1 time-correlation predictive p-value:\n")
-print(round(num_summary, 3))
+print(round(num_summary, 3), width = Inf)
 
 # Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
 # weaker-prior stationary ("st", i.e. stat_weak) models, for a given per-time
