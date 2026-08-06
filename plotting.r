@@ -128,6 +128,59 @@ plot_data_matrix_post <- function(ys, post_ys) {
   return(plot)
 }
 
+# Comparator-status plot for the intercepts simulation, for a single model fit. Each
+# simulated dataset is one line per unit. 
+plot_intercepts_fits <- function(test_ys, abs_cors, groups, num_treated) {
+  T_times <- nrow(test_ys)
+  T_pre <- T_times - num_treated
+
+  # Blue gradient over a fixed [0, 1] correlation domain, so shade intensity is
+  # comparable across datasets and models.
+  blue_ramp <- colorRamp(c("#d6e2ff", "#08306b"))
+  grad_color <- function(x) {
+    m <- blue_ramp(pmin(pmax(x, 0), 1))
+    rgb(m[, 1], m[, 2], m[, 3], maxColorValue = 255)
+  }
+  group_color <- c(
+    treated = "#e41a1c", true = "#3a3aff",
+    spurious = "#ff7f00", uncorrelated = "#bbbbbb"
+  )
+
+  df <- as.data.frame.table(test_ys)
+  names(df) <- c("time", "unit", "obs")
+  df$time <- as.integer(df$time)
+  df$unit <- as.integer(df$unit)
+  df$period <- ifelse(df$time <= T_pre, "pre", "post")
+
+  # Default color is the unit's true-group color (used post-treatment and for the
+  # treated unit throughout); untreated pre-treatment rows overwrite it with the
+  # model-inferred correlation gradient.
+  df$color <- unname(group_color[groups[df$unit]])
+  pre_un <- df$period == "pre" & groups[df$unit] != "treated"
+  df$color[pre_un] <- grad_color(abs_cors[df$unit[pre_un] - 1])
+
+  # Repeat the boundary time in the post segment so each line connects across the
+  # treatment time rather than breaking at it.
+  bridge <- df[df$time == T_pre, ]
+  bridge$period <- "post"
+  bridge$color <- unname(group_color[groups[bridge$unit]])
+  seg <- rbind(df, bridge)
+
+  plot <- ggplot(seg) +
+    geom_vline(xintercept = T_pre + 0.5, color = "grey40", linetype = "dashed") +
+    geom_line(aes(
+      x = time, y = obs,
+      group = interaction(unit, period), color = color
+    )) +
+    scale_color_identity() +
+    theme_bw() +
+    theme(panel.grid = element_blank()) +
+    xlab("Time") +
+    ylab("Outcome")
+
+  return(plot)
+}
+
 # Plot all series in one frame: grey for the rest, blue for the units most
 # correlated with the treated unit, and red for the treated unit itself.
 plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_samples = 9) {

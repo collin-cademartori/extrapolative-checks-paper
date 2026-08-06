@@ -31,6 +31,7 @@ invisible(clusterCall(cl, setwd, getwd()))
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
+  library(ggplot2)
   library(doRNG)
   library(purrr)
 })))
@@ -117,11 +118,22 @@ sim_model_intercepts <- function(
 
   Y <- lat + intercepts + rnorm(N_units * T_times, sd = 0.02)
 
-  return(t(Y))
+  # Ground-truth group of each unit (column), in generating order: the treated unit,
+  # the true comparators, the spurious comparators, then the uncorrelated units. The
+  # plotting code uses this to color the post-treatment segments by known truth.
+  groups <- c(
+    "treated",
+    rep("true", N_comp_true),
+    rep("spurious", N_comp_spur),
+    rep("uncorrelated", N_unc)
+  )
+
+  return(list(Y = t(Y), groups = groups))
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
-  test_ys <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
+run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters = 0) {
+  gen <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
+  test_ys <- gen$Y
 
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
@@ -197,18 +209,33 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     }) |>
     list_flatten()
 
+  if (!is.na(rep_i) && rep_i <= plot_iters) {
+    for (m in c("no_ints", "ints")) {
+      int_plot <- plot_intercepts_fits(
+        test_ys,
+        abs_cors = fits[[m]]$abs_cors,
+        groups = gen$groups, num_treated = 5
+      )
+      ggsave(
+        int_plot,
+        file = sprintf("../figs/sim_int_figs/int_fit_%s_sim%.2g_nc%d_rep%d.png", m, sim, N_comp, rep_i),
+        width = 5, height = 4, create.dir = TRUE
+      )
+    }
+  }
+
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
+run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed, plot_iters = 3) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
-  # extract_variable_array() call.
+  # extract_variable_array() call, ggplot2 for the per-condition figures.
   exp_vars <- c(
     "run_sim_intercepts", "sim_model_intercepts", "ruv",
-    "worker_progress", "sample_model", "ife_mod"
+    "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits"
   )
-  exp_packages <- c("cmdstanr", "posterior")
+  exp_packages <- c("cmdstanr", "posterior", "ggplot2")
 
   # Flatten the sim x N_comp x rep design into a single (non-nested) foreach, so
   # %dorng% gives each task a reproducible RNG stream invariant to worker count.
@@ -239,7 +266,10 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
       .combine = "rbind", .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      unit_res <- run_sim_intercepts(N_comp = N_comp, sim = sim, K_latent = K_latent)
+      unit_res <- run_sim_intercepts(
+        N_comp = N_comp, sim = sim, K_latent = K_latent,
+        rep_i = rep_i, plot_iters = plot_iters
+      )
       worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
       as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))
     }
@@ -256,7 +286,8 @@ sim_study_ints <- run_sim_study_intercepts(
   reps = 300,
   N_comps = c(2, 3),
   sims = c(0.7, 0.9),
-  seed = 52918
+  seed = 52918,
+  plot_iters = 50
 )
 
 stopCluster(cl)
