@@ -64,10 +64,12 @@ sim_model_intercepts <- function(
     N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
   f_treat <- arima.sim(model = list(ar = 0.96), n = T_times)
 
+  f_treat_sd <- 1.9
+
   # f_alt matches the treated factor pre-treatment, then diverges downward over
   # the treatment window -- the driver of the "spurious" comparators.
   f_alt <- f_treat +
-    c(rep(0, T_times - T_treated), (-1 / 2) * seq(T_treated))
+    c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
   # with the treated factor.
