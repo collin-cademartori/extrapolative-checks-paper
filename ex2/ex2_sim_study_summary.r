@@ -14,12 +14,8 @@ perc_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
     q5_perc_no_ints = quantile(no_ints_pred_perc, 0.05),
-    q10_perc_no_ints = quantile(no_ints_pred_perc, 0.1),
-    q90_perc_no_ints = quantile(no_ints_pred_perc, 0.9),
     q95_perc_no_ints = quantile(no_ints_pred_perc, 0.95),
     q5_perc_ints = quantile(ints_pred_perc, 0.05),
-    q10_perc_ints = quantile(ints_pred_perc, 0.1),
-    q90_perc_ints = quantile(ints_pred_perc, 0.9),
     q95_perc_ints = quantile(ints_pred_perc, 0.95),
     .groups = "drop"
   )
@@ -33,12 +29,8 @@ loc_cor_summary <- sim_study_ints |>
   group_by(num_comp, sim) |>
   summarize(
     q5_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.05),
-    q10_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.1),
-    q90_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.9),
     q95_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.95),
     q5_loc_cor_ints = mean(ints_loc_cor_pval, 0.05),
-    q10_loc_cor_ints = mean(ints_loc_cor_pval, 0.1),
-    q90_loc_cor_ints = mean(ints_loc_cor_pval, 0.9),
     q95_loc_cor_ints = mean(ints_loc_cor_pval, 0.95),
     .groups = "drop"
   )

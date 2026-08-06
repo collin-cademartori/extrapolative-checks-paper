@@ -17,17 +17,32 @@ load("sim_study_ns.RData")
 # least 99% for every model, so the check cannot rule out the misspecified model
 # (paper Section 5) -- and the S1 time-correlation predictive p-value, averaged
 # over the study for each model.
-models <- c("nonstat", "stat_weak", "stat_strong")
-num_summary <- cbind(
-  coverage_q5   = quantile(sim_study_stat[paste0(models, "_pred_perc")], 0.05),
-  coverage_q95   = quantile(sim_study_stat[paste0(models, "_pred_perc")], 0.95),
-  `S1 p-val 0.05Q` = apply(sim_study_stat[paste0(models, "_time_cor_pval")], 2, \(x) quantile(x, 0.05)),
-  `S1 p-val 0.95Q` = apply(sim_study_stat[paste0(models, "_time_cor_pval")], 2, \(x) quantile(x, 0.95))
-)
-rownames(num_summary) <- models
 
-cat("\nPer-model 99% interval coverage and S1 time-correlation predictive p-value:\n")
-print(as_tibble(num_summary), width = Inf)
+perc_summary <- sim_study_stat |>
+  summarize(
+    q5_perc_nonstat = quantile(nonstat_pred_perc, 0.05),
+    q5_perc_stat_weak = quantile(stat_weak_pred_perc, 0.05),
+    q5_perc_stat_weak = quantile(stat_strong_pred_perc, 0.05),
+    q95_perc_nonstat = quantile(nonstat_pred_perc, 0.95),
+    q95_perc_stat_weak = quantile(stat_weak_pred_perc, 0.95),
+    q95_perc_stat_weak = quantile(stat_strong_pred_perc, 0.95),
+  )
+
+cat("\nPer-model 99% interval coverage:\n")
+print(as_tibble(perc_summary), width = Inf)
+
+pval_summary <- sim_study_stat |>
+  summarize(
+    q5_pval_nonstat = quantile(nonstat_time_cor_pval, 0.05),
+    q5_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.05),
+    q5_pval_stat_weak = quantile(stat_strong_time_cor_pval, 0.05),
+    q95_pval_nonstat = quantile(nonstat_time_cor_pval, 0.95),
+    q95_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.95),
+    q95_pval_stat_weak = quantile(stat_strong_time_cor_pval, 0.95),
+  )
+
+cat("\nS1 time-correlation predictive p-value:\n")
+print(as_tibble(pval_summary), width = Inf)
 
 # Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
 # weaker-prior stationary ("st", i.e. stat_weak) models, for a given per-time
