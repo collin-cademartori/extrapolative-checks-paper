@@ -140,6 +140,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
+    include_factor_means = TRUE, int_scale = 10,
     type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
     n_chains = 1, seed = fit_seeds[1]
   )

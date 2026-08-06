@@ -59,6 +59,7 @@ data {
 
   int<lower=0, upper=1> nonstationary;
   int<lower=0, upper=1> unit_intercepts;
+  int<lower=0, upper=1> factor_means;
   int<lower=0, upper=1> sample_posterior;
 
   int<lower=0, upper=T_times> num_treated;
@@ -125,6 +126,7 @@ parameters {
   vector<lower=0>[tau_val > 0 ? 0 : 1] tau_param;
 
   matrix[T_times, K_latent] Phi_innovations;
+  vector[factor_means == 1 ? K_latent : 0] Phi_means_param;
   vector<lower=0, upper=1>[K_latent] rho;
 
   // Lower-triangular loadings (cholesky_factor_cov) fix the factor rotation for
@@ -146,6 +148,13 @@ transformed parameters {
     sigma = sigma_data;
   }
 
+  vector[K_latent] Phi_means;
+  if(factor_means) {
+    Phi_means = gamma_scale * Phi_means_param;
+  } else {
+    Phi_means = rep_vector(0, K_latent);
+  }
+
   real<lower=0> tau;
   if(tau_val > 0) {
     tau = tau_val;
@@ -161,7 +170,7 @@ transformed parameters {
 
   matrix[T_times, K_latent] Phi;
   for(k in 1:K_latent) {
-    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], 1, 0);
+    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], 1, Phi_means[k]);
   }
 
   vector[M_units] gamma;
@@ -226,9 +235,10 @@ model {
   }
 
   gamma_raw ~ std_normal();
+  Phi_means_param ~ std_normal();
 
   if(num_treated > 0) {
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(5 * sigma[1])) * effects_prec);
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sigma[1])) * effects_prec);
   }
 
   if(sample_posterior) {
