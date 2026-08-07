@@ -10,7 +10,7 @@ sample_model <- function(
     N_units = 8, T_times = 20, K_latent = 4,
     data = NULL, overall_scales = NULL, err_scale = 0.05,
     err_scale_mean = 0, err_scale_sd = 0,
-    autocor_a, autocor_b, nonstationary, int_scale = 1, include_ints = FALSE, include_factor_means = FALSE,
+    autocor_a, autocor_b, nonstationary, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
     num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
     seed = NULL, n_chains = 4) {
   stopifnot(type %in% c("prior_pred", "posterior"))
@@ -43,7 +43,8 @@ sample_model <- function(
     factor_means = include_factor_means,
     sample_posterior = (type == "posterior"),
     num_treated = num_treated,
-    gamma_scale = int_scale
+    gamma_scale = int_scale,
+    gamma_loc = int_loc
   )
 
   model_sample <- ife_mod$sample(

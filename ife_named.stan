@@ -64,6 +64,7 @@ data {
 
   int<lower=0, upper=T_times> num_treated;
   real<lower=0> gamma_scale;
+  real gamma_loc;
 
   real<lower=0> tau_val;
   real<lower=0> m_tau;
@@ -150,7 +151,7 @@ transformed parameters {
 
   vector[K_latent] Phi_means;
   if(factor_means) {
-    Phi_means = gamma_scale * Phi_means_param;
+    Phi_means = gamma_loc + gamma_scale * Phi_means_param;
   } else {
     Phi_means = rep_vector(0, K_latent);
   }
@@ -175,7 +176,7 @@ transformed parameters {
 
   vector[M_units] gamma;
   if(unit_intercepts) {
-    gamma = gamma_scale * gamma_raw;
+    gamma = gamma_loc + gamma_scale * gamma_raw;
   } else {
     gamma = rep_vector(0, M_units);
   }

@@ -62,13 +62,13 @@ worker_progress <- function(label, logfile = "progress.log") {
 # entangled in a way the unit-intercepts model wrongly assumes independent.
 sim_model_intercepts <- function(
     N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
-  f_treat <- arima.sim(model = list(ar = 0.96), n = T_times)
+  f_treat <- 10 + arima.sim(model = list(ar = 0.96), n = T_times)
 
   f_treat_sd <- 1.9
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over
   # the treatment window -- the driver of the "spurious" comparators.
-  f_alt <- f_treat +
+  f_alt <- 1 + (f_treat - 10) +
     c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
@@ -77,7 +77,7 @@ sim_model_intercepts <- function(
   cor_unc <- Inf
   while (cor_unc > 0.4) {
     for (k in 1:K_unc) {
-      f_unc[k, ] <- arima.sim(model = list(ar = 0.96), n = T_times)
+      f_unc[k, ] <- rnorm(1, 1, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
     }
     cor_unc <- max(abs(cor(t(f_unc), t(t(f_treat)))))
   }
@@ -109,13 +109,13 @@ sim_model_intercepts <- function(
   # Intercepts are the units' long-run averages: the treated and true comparators
   # sit high, the spurious comparators low -- so correlation with the treated does
   # not determine location, contrary to the unit-intercepts model's assumption.
-  intercepts <- c(
-    10, rep(10, N_comp_true),
-    rep(1, N_comp_spur),
-    rnorm(N_unc, mean = 1, sd = 2)
-  )
+  # intercepts <- c(
+  #   10, rep(10, N_comp_true),
+  #   rep(1, N_comp_spur),
+  #   rnorm(N_unc, mean = 1, sd = 2)
+  # )
 
-  Y <- lat + intercepts + rnorm(N_units * T_times, sd = 0.02)
+  Y <- lat + rnorm(N_units * T_times, sd = 0.02)
 
   return(t(Y))
 }
@@ -140,7 +140,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_factor_means = TRUE, int_scale = 10,
+    include_factor_means = TRUE, int_scale = 3, int_loc = 5,
     type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
     n_chains = 1, seed = fit_seeds[1]
   )
@@ -152,7 +152,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_ints = TRUE, int_scale = 10,
+    include_ints = TRUE, int_scale = 3, int_loc = 5,
     type = "posterior", quiet = TRUE, iter = 500,
     n_chains = 1, seed = fit_seeds[2]
   )
