@@ -77,7 +77,7 @@ sim_model_intercepts <- function(
   cor_unc <- Inf
   while (cor_unc > 0.4) {
     for (k in 1:K_unc) {
-      f_unc[k, ] <- rnorm(1, 1, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
+      f_unc[k, ] <- rnorm(1, 3, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
     }
     cor_unc <- max(abs(cor(t(f_unc), t(t(f_treat)))))
   }
@@ -140,7 +140,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_factor_means = TRUE, int_scale = 3, int_loc = 5,
+    include_factor_means = TRUE, int_scale = 2, int_loc = 5,
     type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
     n_chains = 1, seed = fit_seeds[1]
   )
@@ -152,7 +152,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_ints = TRUE, int_scale = 3, int_loc = 5,
+    include_ints = TRUE, int_scale = 2, int_loc = 5,
     type = "posterior", quiet = TRUE, iter = 500,
     n_chains = 1, seed = fit_seeds[2]
   )
