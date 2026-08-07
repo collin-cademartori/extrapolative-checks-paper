@@ -135,7 +135,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   fits <- list()
 
   fits$no_ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent,
+    N_units = 10, T_times = 20, K_latent = K_latent - 2,
     overall_scales = overall_scales, err_scale = 0.2,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
@@ -147,7 +147,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   fits$no_ints$name <- "no_ints"
 
   fits$ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent,
+    N_units = 10, T_times = 20, K_latent = K_latent - 2,
     overall_scales = overall_scales, err_scale = 0.2,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
