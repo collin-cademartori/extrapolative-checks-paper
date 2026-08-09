@@ -125,7 +125,6 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
 
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
-  overall_scales <- apply(test_ys, 2, sd)
 
   # Draw both Stan seeds up front, before any sample_model() call: cmdstanr's
   # $sample() advances R's global RNG, so a seed drawn after a fit would not be
@@ -134,6 +133,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
 
   fits <- list()
 
+  overall_scales <- apply(test_ys, 2, \(x) sqrt(mean(x ^ 2)))
   fits$no_ints <- sample_model(
     N_units = 10, T_times = 20, K_latent = K_latent,
     overall_scales = overall_scales, err_scale = 0.1,
@@ -146,9 +146,10 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   )
   fits$no_ints$name <- "no_ints"
 
+  overall_sds <- apply(test_ys, 2, sd)
   fits$ints <- sample_model(
     N_units = 10, T_times = 20, K_latent = K_latent,
-    overall_scales = overall_scales, err_scale = 0.1,
+    overall_scales = overall_sds, err_scale = 0.1,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
