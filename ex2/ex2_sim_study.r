@@ -147,7 +147,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_factor_means = TRUE, int_scale = 2, int_loc = 4,
+    include_factor_means = TRUE, int_scale = 3, int_loc = 4,
     type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
     n_chains = 1, seed = fit_seeds[1]
   )
@@ -159,7 +159,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_ints = TRUE, int_scale = 2, int_loc = 4,
+    include_ints = TRUE, int_scale = 3, int_loc = 4,
     type = "posterior", quiet = TRUE, iter = 500,
     n_chains = 1, seed = fit_seeds[2]
   )
@@ -223,7 +223,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed, plot_iters = 3) {
+run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed, plot_iters = 3) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
   # extract_variable_array() call, ggplot2 for the per-condition figures.
