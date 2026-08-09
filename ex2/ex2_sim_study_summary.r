@@ -149,7 +149,7 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   facet_grid(vars(sim), vars(time), scales = "free") +
   xlab("Modeled Long-Run Correlation (Treated vs Spuriously Correlated Units)") +
   ylab("Average Standardized Error of Posterior\n Expected Treatment Effect") +
-  scale_x_continuous(expand = expansion(mult = 0.6)) +
+  scale_x_continuous(expand = expansion(mult = 0.6), n.breaks = 3) +
   scale_y_continuous(expand = expansion(mult = 0.1)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
