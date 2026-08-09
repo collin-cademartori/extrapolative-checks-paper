@@ -125,6 +125,7 @@ parameters {
 
   vector<lower=0>[fit_overall_scales == 1 ? M_units : 0] sigma_raw;
   vector<lower=0>[tau_val > 0 ? 0 : 1] tau_param;
+  vector<lower=0, upper=1>[factor_means == 1 ? 1 : 0] omega_sq;
 
   matrix[T_times, K_latent] Phi_innovations;
   vector[factor_means == 1 ? K_latent : 0] Phi_means_param;
@@ -151,7 +152,7 @@ transformed parameters {
 
   vector[K_latent] Phi_means;
   if(factor_means) {
-    Phi_means = gamma_loc + gamma_scale * Phi_means_param;
+    Phi_means = sqrt(1 - omega_sq[1]) * Phi_means_param;
   } else {
     Phi_means = rep_vector(0, K_latent);
   }
@@ -171,7 +172,8 @@ transformed parameters {
 
   matrix[T_times, K_latent] Phi;
   for(k in 1:K_latent) {
-    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], 1, Phi_means[k]);
+    real proc_scale = factor_means ? sqrt(omega_sq[1]) : 1;
+    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, Phi_means[k]);
   }
 
   vector[M_units] gamma;
@@ -313,11 +315,11 @@ generated quantities {
   vector[M_units - 1] abs_cors;
   {
     row_vector[K_latent] Lambda_tr = Lambda[1,:];
-    real var_tr = inv(error_precisions[1]);
+    // real var_tr = inv(error_precisions[1]);
     for(n in 2:M_units) {
       row_vector[K_latent] Lambda_un = Lambda[n,:];
-      real var_un = inv(error_precisions[n]);
-      abs_cors[n-1] = abs(dot_product(Lambda_tr, Lambda_un)) / sqrt((dot_self(Lambda_tr) + var_tr) * (dot_self(Lambda_un) + var_un));
+      // real var_un = inv(error_precisions[n]);
+      abs_cors[n-1] = abs(dot_product(Lambda_tr, Lambda_un)) / sqrt((dot_self(Lambda_tr) + square(tau)) * (dot_self(Lambda_un) + square(tau)));
     }
   }
 
