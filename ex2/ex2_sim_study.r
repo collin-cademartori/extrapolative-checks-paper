@@ -62,13 +62,13 @@ worker_progress <- function(label, logfile = "progress.log") {
 # entangled in a way the unit-intercepts model wrongly assumes independent.
 sim_model_intercepts <- function(
     N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
-  f_treat <- 10 + arima.sim(model = list(ar = 0.96), n = T_times)
+  f_treat <- 8 + arima.sim(model = list(ar = 0.96), n = T_times)
 
   f_treat_sd <- 1.9
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over
   # the treatment window -- the driver of the "spurious" comparators.
-  f_alt <- 1 + (f_treat - 10) +
+  f_alt <- (f_treat - 8) +
     c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
@@ -77,7 +77,7 @@ sim_model_intercepts <- function(
   cor_unc <- Inf
   while (cor_unc > 0.4) {
     for (k in 1:K_unc) {
-      f_unc[k, ] <- rnorm(1, 3, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
+      f_unc[k, ] <- rnorm(1, 4, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
     }
     cor_unc <- max(abs(cor(t(f_unc), t(t(f_treat)))))
   }
@@ -115,7 +115,7 @@ sim_model_intercepts <- function(
   #   rnorm(N_unc, mean = 1, sd = 2)
   # )
 
-  Y <- lat + rnorm(N_units * T_times, sd = 0.02)
+  Y <- lat
 
   return(t(Y))
 }
@@ -135,24 +135,24 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   fits <- list()
 
   fits$no_ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent - 2,
-    overall_scales = overall_scales, err_scale = 0.2,
+    N_units = 10, T_times = 20, K_latent = K_latent,
+    overall_scales = overall_scales, err_scale = 0.1,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_factor_means = TRUE, int_scale = 2, int_loc = 5,
+    include_factor_means = TRUE,
     type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
     n_chains = 1, seed = fit_seeds[1]
   )
   fits$no_ints$name <- "no_ints"
 
   fits$ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent - 2,
-    overall_scales = overall_scales, err_scale = 0.2,
+    N_units = 10, T_times = 20, K_latent = K_latent,
+    overall_scales = overall_scales, err_scale = 0.1,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
-    include_ints = TRUE, int_scale = 2, int_loc = 5,
+    include_ints = TRUE, int_scale = 3, int_loc = 4,
     type = "posterior", quiet = TRUE, iter = 500,
     n_chains = 1, seed = fit_seeds[2]
   )
@@ -201,7 +201,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5) {
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
+run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
   # extract_variable_array() call.
@@ -254,9 +254,9 @@ run_sim_study_intercepts <- function(K_latent = 6, reps, N_comps, sims, seed) {
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 300,
-  N_comps = c(2, 3),
-  sims = c(0.7, 0.9),
+  reps = 100,
+  N_comps = c(3),
+  sims = c(0.9),
   seed = 52918
 )
 
