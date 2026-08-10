@@ -112,7 +112,7 @@ sample_model <- function(
     loc_cor_pval <- mean(loc_cor_pred > loc_cor_data)
 
     y_cor <- abs(cor(data)[1, 2:ncol(data)])
-    cor_err_mean <- rowMeans(abs(y_cor - t(abs_cors)))
+    cor_err_mean <- rowMeans(abs(y_cor - t(cor_sq)))
 
     return(list(
       y_means = y_means_post,
