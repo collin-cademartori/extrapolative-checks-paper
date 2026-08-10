@@ -194,7 +194,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
       res[paste0("sd_", seq_along(psds))] <- psds
 
       cor_sq <- pfit$cor_sq
-      res[paste0("acor_", seq_along(acors))] <- acors
+      res[paste0("cor_sq", seq_along(cor_sq))] <- cor_sq
 
       acors_err <- pfit$abs_cors_err
       res[paste0("acor_err_", seq_along(acors_err))] <- acors_err

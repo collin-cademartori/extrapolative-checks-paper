@@ -111,9 +111,9 @@ sim_study_overfit <- abs(sim_study_ints) |>
   ) |>
   filter(num_comp == 3) |>
   mutate(
-    errspur = (acor_3 + acor_4 + acor_5) / 3
+    errspur = (cor_sq_3 + cor_sq_4 + cor_sq_5) / 3
   ) |>
-  select(!starts_with("acor")) |>
+  select(!starts_with("cor_sq")) |>
   # Second pivot only over the time-indexed columns (name ends in _<digit>);
   # the scalar per-model stats (pred_perc, pred_mad, loc_cor_pval) are left
   # untouched, so new scalar stats can be added without breaking this pivot.
