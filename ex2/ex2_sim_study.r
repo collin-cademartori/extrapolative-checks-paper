@@ -143,7 +143,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
   overall_scales <- apply(test_ys, 2, \(x) sqrt(mean(x ^ 2)))
   fits$no_ints <- sample_model(
     N_units = 10, T_times = 20, K_latent = K_latent,
-    overall_scales = overall_scales, err_scale = 0.1,
+    overall_scales = overall_scales, err_scale = 0.05,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
@@ -156,7 +156,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
   overall_sds <- apply(test_ys, 2, sd)
   fits$ints <- sample_model(
     N_units = 10, T_times = 20, K_latent = K_latent,
-    overall_scales = overall_sds, err_scale = 0.1,
+    overall_scales = overall_sds, err_scale = 0.05,
     data = test_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
@@ -193,7 +193,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
       psds <- pfit$effect_sds
       res[paste0("sd_", seq_along(psds))] <- psds
 
-      acors <- pfit$abs_cors
+      cor_sq <- pfit$cor_sq
       res[paste0("acor_", seq_along(acors))] <- acors
 
       acors_err <- pfit$abs_cors_err
@@ -210,7 +210,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     for (m in c("no_ints", "ints")) {
       int_plot <- plot_intercepts_fits(
         test_ys,
-        abs_cors = fits[[m]]$abs_cors,
+        cor_sq = fits[[m]]$cor_sq,
         groups = gen$groups, num_treated = 5
       )
       ggsave(
@@ -283,6 +283,7 @@ sim_study_ints <- run_sim_study_intercepts(
   reps = 100,
   N_comps = c(2, 3),
   sims = c(0.7, 0.95),
+  K_latent = 4,
   seed = 52918,
   plot_iters = 50
 )

@@ -319,14 +319,12 @@ generated quantities {
   // and each other unit: the factor covariance (Lambda_tr . Lambda_un) over the
   // product of total standard deviations (factor variance plus idiosyncratic
   // variance var = 1 / error_precisions).
-  vector[M_units - 1] abs_cors;
+  vector[M_units - 1] cor_sq;
   {
     row_vector[K_latent] Lambda_tr = Lambda[1,:];
-    // real var_tr = inv(error_precisions[1]);
     for(n in 2:M_units) {
       row_vector[K_latent] Lambda_un = Lambda[n,:];
-      // real var_un = inv(error_precisions[n]);
-      abs_cors[n-1] = abs(dot_product(Lambda_tr, Lambda_un)) / sqrt((dot_self(Lambda_tr) + square(tau)) * (dot_self(Lambda_un) + square(tau)));
+      cor_sq[n-1] = square(dot_product(Lambda_tr, Lambda_un)) / ((dot_self(Lambda_tr) + square(tau)) * (dot_self(Lambda_un) + square(tau)));
     }
   }
 

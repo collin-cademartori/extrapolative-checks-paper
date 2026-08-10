@@ -89,8 +89,8 @@ sample_model <- function(
     err_scale <- as.numeric(model_sample$draws("tau"))
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
 
-    abs_cors <- extract_variable_array(model_sample$draws(), "abs_cors")[, 1, ]
-    abs_cors_mean <- colMeans(abs_cors)
+    cor_sq <- extract_variable_array(model_sample$draws(), "cor_sq")[, 1, ]
+    cor_sq_mean <- colMeans(cor_sq)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
     abs_cor_data <- abs(cor(data[, 2], seq(nrow(data))))
@@ -120,7 +120,7 @@ sample_model <- function(
       effect_means = effect_means,
       effect_sds = effect_sds,
       mean_abs_diffs = mad,
-      abs_cors = abs_cors_mean,
+      cor_sq = cor_sq_mean,
       abs_cors_err = cor_err_mean,
       err_scale = err_scale,
       time_cor_pval = time_cor_pval,

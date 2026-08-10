@@ -130,7 +130,7 @@ plot_data_matrix_post <- function(ys, post_ys) {
 
 # Comparator-status plot for the intercepts simulation, for a single model fit. Each
 # simulated dataset is one line per unit. 
-plot_intercepts_fits <- function(test_ys, abs_cors, groups, num_treated) {
+plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   T_times <- nrow(test_ys)
   T_pre <- T_times - num_treated
 
@@ -157,7 +157,7 @@ plot_intercepts_fits <- function(test_ys, abs_cors, groups, num_treated) {
   # model-inferred correlation gradient.
   df$color <- unname(group_color[groups[df$unit]])
   pre_un <- df$period == "pre" & groups[df$unit] != "treated"
-  df$color[pre_un] <- grad_color(abs_cors[df$unit[pre_un] - 1])
+  df$color[pre_un] <- grad_color(cor_sq[df$unit[pre_un] - 1])
 
   # Repeat the boundary time in the post segment so each line connects across the
   # treatment time rather than breaking at it.
