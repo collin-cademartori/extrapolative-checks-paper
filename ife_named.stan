@@ -125,6 +125,7 @@ parameters {
 
   vector<lower=0>[fit_overall_scales == 1 ? M_units : 0] sigma_raw;
   vector<lower=0>[tau_val > 0 ? 0 : 1] tau_param;
+  vector<lower=0, upper=1>[factor_means == 1 ? 1 : 0] omega_sq_param;
 
   matrix[T_times, K_latent] Phi_innovations;
   vector[factor_means == 1 ? K_latent : 0] Phi_means_param;
@@ -149,9 +150,16 @@ transformed parameters {
     sigma = sigma_data;
   }
 
+  real<lower=0, upper=1> omega_sq;
+  if(factor_means) {
+    omega_sq = omega_sq_param[1];
+  } else {
+    omega_sq = 1;
+  }
+
   vector[K_latent] Phi_means;
   if(factor_means) {
-    Phi_means = gamma_loc + gamma_scale * Phi_means_param;
+    Phi_means = sqrt(1 - omega_sq) * Phi_means_param;
   } else {
     Phi_means = rep_vector(0, K_latent);
   }
@@ -163,7 +171,7 @@ transformed parameters {
     tau = tau_param[1];
   }
 
-  vector<lower=0>[M_units] error_precisions = square(inv(tau * sigma));
+  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(tau * sigma));
   if(nonstationary) {
     // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
@@ -171,7 +179,8 @@ transformed parameters {
 
   matrix[T_times, K_latent] Phi;
   for(k in 1:K_latent) {
-    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], 1, Phi_means[k]);
+    real proc_scale = factor_means ? sqrt(omega_sq) : 1;
+    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, Phi_means[k]);
   }
 
   vector[M_units] gamma;
@@ -239,7 +248,7 @@ model {
   Phi_means_param ~ std_normal();
 
   if(num_treated > 0) {
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), square(inv(sigma[1])) * effects_prec);
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), inv(omega_sq * square(sigma[1])) * effects_prec);
   }
 
   if(sample_posterior) {
@@ -256,11 +265,11 @@ generated quantities {
 
   if(nonstationary) {
     for(n in 1:M_units) {
-      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * square(tau * sigma[n]) * errors_cov));
+      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(tau * sigma[n]) * errors_cov));
     }
   } else {
     for(n in 1:M_units) {
-      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], square(tau * sigma[n]) * errors_cov);
+      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(tau * sigma[n]) * errors_cov);
     }
   }
 
@@ -313,11 +322,11 @@ generated quantities {
   vector[M_units - 1] abs_cors;
   {
     row_vector[K_latent] Lambda_tr = Lambda[1,:];
-    real var_tr = inv(error_precisions[1]);
+    // real var_tr = inv(error_precisions[1]);
     for(n in 2:M_units) {
       row_vector[K_latent] Lambda_un = Lambda[n,:];
-      real var_un = inv(error_precisions[n]);
-      abs_cors[n-1] = abs(dot_product(Lambda_tr, Lambda_un)) / sqrt((dot_self(Lambda_tr) + var_tr) * (dot_self(Lambda_un) + var_un));
+      // real var_un = inv(error_precisions[n]);
+      abs_cors[n-1] = abs(dot_product(Lambda_tr, Lambda_un)) / sqrt((dot_self(Lambda_tr) + square(tau)) * (dot_self(Lambda_un) + square(tau)));
     }
   }
 
