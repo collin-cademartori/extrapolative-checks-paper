@@ -111,7 +111,7 @@ sim_model_intercepts <- function(
   # sit high, the spurious comparators low -- so correlation with the treated does
   # not determine location, contrary to the unit-intercepts model's assumption.
 
-  Y <- lat
+  Y <- lat + rnorm(nrow(lat) * ncol(lat), sd = 0.05 * max(apply(lat, 1, sd)))
 
   # Ground-truth group of each unit (column), in generating order: the treated unit,
   # the true comparators, the spurious comparators, then the uncorrelated units. The
