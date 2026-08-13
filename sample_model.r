@@ -61,18 +61,25 @@ sample_model <- function(
   )
 
   # Optionally note this fit's sampler diagnostics (divergences, max-treedepth hits,
-  # min E-BFMI) to a shared log, tagged with the caller's label, so Stan warnings can
-  # be cross-correlated with the simulation rep. Only problematic fits are logged, so a
-  # clean run leaves the log to the per-rep progress lines.
+  # min E-BFMI, and the bulk ESS of the first treatment-effect element as a cheap
+  # mixing canary) to a shared log, tagged with the caller's label, so Stan warnings
+  # can be cross-correlated with the simulation rep. Only problematic fits are logged,
+  # so a clean run leaves the log to the per-rep progress lines.
   if (!is.null(log_file)) {
     ds <- model_sample$diagnostic_summary(quiet = TRUE)
     n_div <- sum(ds$num_divergent)
     n_tree <- sum(ds$num_max_treedepth)
     ebfmi_min <- suppressWarnings(min(ds$ebfmi))
-    if (n_div > 0 || n_tree > 0 || (is.finite(ebfmi_min) && ebfmi_min < 0.3)) {
+    ess_delta1 <- if (num_treated > 0) {
+      model_sample$summary("delta", "ess_bulk")$ess_bulk[1]
+    } else {
+      NA_real_
+    }
+    if (n_div > 0 || n_tree > 0 || (is.finite(ebfmi_min) && ebfmi_min < 0.3) ||
+      (is.finite(ess_delta1) && ess_delta1 < 100)) {
       cat(sprintf(
-        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f\n",
-        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree, ebfmi_min
+        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f\n",
+        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree, ebfmi_min, ess_delta1
       ), file = log_file, append = TRUE)
     }
   }
