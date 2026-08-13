@@ -280,7 +280,7 @@ run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed, pl
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 100,
+  reps = 300,
   N_comps = c(2, 3),
   sims = c(0.7, 0.95),
   K_latent = 4,
