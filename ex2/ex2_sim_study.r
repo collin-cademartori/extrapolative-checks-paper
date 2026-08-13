@@ -148,7 +148,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
     include_factor_means = TRUE,
-    type = "posterior", quiet = TRUE, ad = 0.8, iter = 500,
+    type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
     n_chains = 1, seed = fit_seeds[1]
   )
   fits$no_ints$name <- "no_ints"
@@ -161,7 +161,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
     include_ints = TRUE, int_scale = 3, int_loc = 4,
-    type = "posterior", quiet = TRUE, iter = 500,
+    type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
     n_chains = 1, seed = fit_seeds[2]
   )
   fits$ints$name <- "ints"
