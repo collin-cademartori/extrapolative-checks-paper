@@ -60,26 +60,49 @@ sample_model <- function(
     seed = seed
   )
 
-  # Optionally note this fit's sampler diagnostics (divergences, max-treedepth hits,
-  # min E-BFMI, and the bulk ESS of the first treatment-effect element as a cheap
-  # mixing canary) to a shared log, tagged with the caller's label, so Stan warnings
-  # can be cross-correlated with the simulation rep. Only problematic fits are logged,
-  # so a clean run leaves the log to the per-rep progress lines.
+  # Optionally note this fit's sampler diagnostics to a shared log, tagged with the
+  # caller's label, so Stan warnings can be cross-correlated with the simulation rep.
+  # Alongside the divergence/treedepth/E-BFMI counts we log two mixing canaries: the
+  # bulk ESS of the first treatment effect, and the max R-hat over the *free parameters*
+  # (not the deterministic transformed/generated quantities) -- poor mixing anywhere,
+  # e.g. a weakly identified loading, can bias delta even when delta's own R-hat is
+  # fine. A single rhat+ess pass over just the parameter block keeps it cheap
+  # (delta_raw[1] == delta[1]; Lambda's structural zeros give NaN R-hat, which we drop),
+  # and it is wrapped so a summary hiccup can never abort the study. Only problematic
+  # fits are logged, so a clean run leaves the log to the per-rep progress lines.
   if (!is.null(log_file)) {
     ds <- model_sample$diagnostic_summary(quiet = TRUE)
     n_div <- sum(ds$num_divergent)
     n_tree <- sum(ds$num_max_treedepth)
     ebfmi_min <- suppressWarnings(min(ds$ebfmi))
-    ess_delta1 <- if (num_treated > 0) {
-      model_sample$summary("delta", "ess_bulk")$ess_bulk[1]
-    } else {
-      NA_real_
-    }
+
+    mixing <- tryCatch(
+      {
+        param_vars <- intersect(
+          c(
+            "Lambda", "Phi_innovations", "sigma_raw", "rho", "gamma_raw",
+            "delta_raw", "omega_sq_param", "Phi_means_param", "tau_param"
+          ),
+          model_sample$metadata()$stan_variables
+        )
+        ps <- model_sample$summary(param_vars, "rhat", "ess_bulk")
+        list(
+          rhat_max = suppressWarnings(max(ps$rhat, na.rm = TRUE)),
+          ess_delta1 = ps$ess_bulk[match("delta_raw[1]", ps$variable)]
+        )
+      },
+      error = function(e) list(rhat_max = NA_real_, ess_delta1 = NA_real_)
+    )
+    rhat_max <- mixing$rhat_max
+    ess_delta1 <- mixing$ess_delta1
+
     if (n_div > 0 || n_tree > 0 || (is.finite(ebfmi_min) && ebfmi_min < 0.3) ||
-      (is.finite(ess_delta1) && ess_delta1 < 100)) {
+      (is.finite(ess_delta1) && ess_delta1 < 100) ||
+      (is.finite(rhat_max) && rhat_max > 1.01)) {
       cat(sprintf(
-        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f\n",
-        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree, ebfmi_min, ess_delta1
+        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f\n",
+        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree,
+        ebfmi_min, ess_delta1, rhat_max
       ), file = log_file, append = TRUE)
     }
   }
