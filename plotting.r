@@ -133,24 +133,32 @@ plot_data_matrix_post <- function(ys, post_ys) {
 plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   T_times <- nrow(test_ys)
   T_pre <- T_times - num_treated
+  # Color switches (and the marker sits) at the last pre-treatment time, so the
+  # gradient spans only fully-pre-treatment segments; the segment crossing into
+  # treatment takes the post (true-group) color.
+  boundary <- T_pre
 
   # Blue gradient over a fixed [0, 1] correlation domain, so shade intensity is
-  # comparable across datasets and models.
-  blue_ramp <- colorRamp(c("#d6e2ff", "#08306b"))
+  # comparable across datasets and models. The top of the ramp matches the "true"
+  # group color, so a correctly-identified comparator holds one blue across the
+  # boundary while a spurious one flips blue -> vermilion (the reveal).
+  blue_ramp <- colorRamp(c("#d6e2ff", "#0072b2"))
   grad_color <- function(x) {
     m <- blue_ramp(pmin(pmax(x, 0), 1))
     rgb(m[, 1], m[, 2], m[, 3], maxColorValue = 255)
   }
+  # Okabe-Ito-based colorblind-safe groups: treated black, true blue (matches the
+  # gradient top), spurious vermilion (warm reveal against the blue), uncorrelated grey.
   group_color <- c(
-    treated = "#e41a1c", true = "#3a3aff",
-    spurious = "#ff7f00", uncorrelated = "#bbbbbb"
+    treated = "#000000", true = "#0072b2",
+    spurious = "#d55e00", uncorrelated = "#999999"
   )
 
   df <- as.data.frame.table(test_ys)
   names(df) <- c("time", "unit", "obs")
   df$time <- as.integer(df$time)
   df$unit <- as.integer(df$unit)
-  df$period <- ifelse(df$time <= T_pre, "pre", "post")
+  df$period <- ifelse(df$time <= boundary, "pre", "post")
 
   # Default color is the unit's true-group color (used post-treatment and for the
   # treated unit throughout); untreated pre-treatment rows overwrite it with the
@@ -159,15 +167,15 @@ plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   pre_un <- df$period == "pre" & groups[df$unit] != "treated"
   df$color[pre_un] <- grad_color(cor_sq[df$unit[pre_un] - 1])
 
-  # Repeat the boundary time in the post segment so each line connects across the
-  # treatment time rather than breaking at it.
-  bridge <- df[df$time == T_pre, ]
+  # Repeat the boundary time in the post segment (true-group color) so each line
+  # connects across the switch rather than breaking at it.
+  bridge <- df[df$time == boundary, ]
   bridge$period <- "post"
   bridge$color <- unname(group_color[groups[bridge$unit]])
   seg <- rbind(df, bridge)
 
   plot <- ggplot(seg) +
-    geom_vline(xintercept = T_pre + 0.5, color = "grey40", linetype = "dashed") +
+    geom_vline(xintercept = boundary, color = "grey40", linetype = "solid") +
     geom_line(aes(
       x = time, y = obs,
       group = interaction(unit, period), color = color
@@ -182,7 +190,7 @@ plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
 }
 
 # Plot all series in one frame: grey for the rest, blue for the units most
-# correlated with the treated unit, and red for the treated unit itself.
+# correlated with the treated unit, and green for the treated unit itself.
 plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_samples = 9) {
   trans <- ifelse(use_exp, exp, function(x) x)
 
@@ -238,7 +246,7 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     geom_line(data = filter(ys_long, is_comp == "treated"), aes(
       x = time, y = obs,
       group = unit
-    ), color = "#e41a1c", linewidth = 0.8, alpha = 1) +
+    ), color = "#009e73", linewidth = 0.8, alpha = 1) +
     facet_wrap(vars(sample), nrow = 2, scales = "free_y") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
