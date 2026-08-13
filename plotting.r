@@ -175,11 +175,11 @@ plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   seg <- rbind(df, bridge)
 
   plot <- ggplot(seg) +
-    geom_vline(xintercept = boundary, color = "grey40", linetype = "solid") +
     geom_line(aes(
       x = time, y = obs,
       group = interaction(unit, period), color = color
     )) +
+    geom_vline(xintercept = boundary, color = "grey40", linetype = "solid") +
     scale_color_identity() +
     theme_bw() +
     theme(panel.grid = element_blank()) +
