@@ -180,7 +180,10 @@ transformed parameters {
   matrix[T_times, K_latent] Phi;
   for(k in 1:K_latent) {
     real proc_scale = factor_means ? sqrt(omega_sq) : 1;
-    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, Phi_means[k]);
+    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, 0);
+    if(factor_means == 1) {
+      Phi[:,k] = Phi_means[k] + (Phi[:,k] - mean(Phi[:,k]));
+    }
   }
 
   vector[M_units] gamma;
