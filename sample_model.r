@@ -12,7 +12,7 @@ sample_model <- function(
     err_scale_mean = 0, err_scale_sd = 0,
     autocor_a, autocor_b, nonstationary, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
     num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
-    seed = NULL, n_chains = 4) {
+    seed = NULL, n_chains = 4, log_file = NULL, log_label = NULL) {
   stopifnot(type %in% c("prior_pred", "posterior"))
   stopifnot(0 < autocor_a)
   stopifnot(0 < autocor_b)
@@ -59,6 +59,23 @@ sample_model <- function(
     show_messages = !quiet,
     seed = seed
   )
+
+  # Optionally note this fit's sampler diagnostics (divergences, max-treedepth hits,
+  # min E-BFMI) to a shared log, tagged with the caller's label, so Stan warnings can
+  # be cross-correlated with the simulation rep. Only problematic fits are logged, so a
+  # clean run leaves the log to the per-rep progress lines.
+  if (!is.null(log_file)) {
+    ds <- model_sample$diagnostic_summary(quiet = TRUE)
+    n_div <- sum(ds$num_divergent)
+    n_tree <- sum(ds$num_max_treedepth)
+    ebfmi_min <- suppressWarnings(min(ds$ebfmi))
+    if (n_div > 0 || n_tree > 0 || (is.finite(ebfmi_min) && ebfmi_min < 0.3)) {
+      cat(sprintf(
+        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f\n",
+        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree, ebfmi_min
+      ), file = log_file, append = TRUE)
+    }
+  }
 
   if (type == "prior_pred") {
     ys_prior_all <-

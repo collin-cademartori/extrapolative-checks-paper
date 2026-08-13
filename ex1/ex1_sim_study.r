@@ -47,12 +47,13 @@ source("../plotting.r")
 worker_progress <- function(label, logfile = "progress.log") {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
-  cat(sprintf("[worker %d] %3d done | %s\n", Sys.getpid(), n, label),
-    file = logfile, append = TRUE
-  )
+  cat(sprintf(
+    "[%s] [worker %d] %3d done | %s\n",
+    format(Sys.time(), "%H:%M"), Sys.getpid(), n, label
+  ), file = logfile, append = TRUE)
 }
 
-run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
+run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
@@ -78,7 +79,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = TRUE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1, seed = fit_seeds[1]
+    n_chains = 1, seed = fit_seeds[1],
+    log_file = progress_log, log_label = sprintf("unit %d nonstat", i)
   )
   fits$nonstat$name <- "nonstat"
 
@@ -91,7 +93,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1, seed = fit_seeds[2]
+    n_chains = 1, seed = fit_seeds[2],
+    log_file = progress_log, log_label = sprintf("unit %d stat_weak", i)
   )
   fits$stat_weak$name <- "stat_weak"
 
@@ -102,7 +105,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
     nonstationary = FALSE, num_treated = 5,
     type = "posterior", K_latent = K_latent,
     iter = 400,
-    n_chains = 1, seed = fit_seeds[3]
+    n_chains = 1, seed = fit_seeds[3],
+    log_file = progress_log, log_label = sprintf("unit %d stat_strong", i)
   )
   fits$stat_strong$name <- "stat_strong"
 
@@ -147,8 +151,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE) {
   p2_means <- apply(fits$stat_weak$y_means, c(2, 3), mean)
   p1_means <- apply(fits$stat_strong$y_means, c(2, 3), mean)
 
-  fit_plot <- plot_post_fits_all(test_ys, pns_means, p2_means, p1_means)
-  ggsave(fit_plot, file = paste0("../figs/sim_stat_figs/post_fit_plot_", i, ".png"), create.dir = TRUE)
+  # Show a single unit's fits per rep
+  plot_unit <- 2
+  fit_plot <- plot_post_fits_stat(test_ys, pns_means, p2_means, p1_means, unit = plot_unit)
+  ggsave(
+    fit_plot,
+    file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),
+    create.dir = TRUE
+  )
 
   if (post_check) {
     check_plot <- plot_data_matrix_post(test_ys, fits$stat_weak$y_pred)
@@ -178,7 +188,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
     iter = 2 * reps, seed = pp_seed
   )
 
-  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_all", "plot_data_matrix_post")
+  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
@@ -203,7 +213,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
       .combine = "rbind", .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check))
+      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check, progress_log = progress_log))
       worker_progress(sprintf("iteration %d (unit %d)", iter, s), logfile = progress_log)
       unit_res
     }

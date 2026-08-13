@@ -10,8 +10,7 @@ library(doRNG)
 library(purrr)
 
 # Worker count: pass as the first CLI arg (e.g. `Rscript ex2_sim_study.r 4`),
-# otherwise a conservative default. (Apple Silicon has no hyperthreading, so base
-# this on physical cores and do not oversubscribe.)
+# otherwise a conservative default. 
 requested_cores <- suppressWarnings(as.integer(commandArgs(trailingOnly = TRUE)[1]))
 n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
   requested_cores
@@ -52,9 +51,10 @@ ruv <- function(d) {
 worker_progress <- function(label, logfile = "progress.log") {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
-  cat(sprintf("[worker %d] %3d done | %s\n", Sys.getpid(), n, label),
-    file = logfile, append = TRUE
-  )
+  cat(sprintf(
+    "[%s] [worker %d] %3d done | %s\n",
+    format(Sys.time(), "%H:%M"), Sys.getpid(), n, label
+  ), file = logfile, append = TRUE)
 }
 
 # Adversarial DGP for the intercepts example (paper Section 5): untreated units
@@ -126,7 +126,7 @@ sim_model_intercepts <- function(
   return(list(Y = t(Y), groups = groups))
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters = 0) {
+run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters = 0, progress_log = NULL) {
   gen <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
   test_ys <- gen$Y
 
@@ -149,7 +149,9 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     nonstationary = FALSE, num_treated = 5,
     include_factor_means = TRUE,
     type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
-    n_chains = 1, seed = fit_seeds[1]
+    n_chains = 1, seed = fit_seeds[1],
+    log_file = progress_log,
+    log_label = sprintf("sim %.2g num_comp %d rep %d no_ints", sim, N_comp, rep_i)
   )
   fits$no_ints$name <- "no_ints"
 
@@ -162,7 +164,9 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
     nonstationary = FALSE, num_treated = 5,
     include_ints = TRUE, int_scale = 3, int_loc = 4,
     type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
-    n_chains = 1, seed = fit_seeds[2]
+    n_chains = 1, seed = fit_seeds[2],
+    log_file = progress_log,
+    log_label = sprintf("sim %.2g num_comp %d rep %d ints", sim, N_comp, rep_i)
   )
   fits$ints$name <- "ints"
 
@@ -265,7 +269,7 @@ run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed, pl
     ) %dorng% {
       unit_res <- run_sim_intercepts(
         N_comp = N_comp, sim = sim, K_latent = K_latent,
-        rep_i = rep_i, plot_iters = plot_iters
+        rep_i = rep_i, plot_iters = plot_iters, progress_log = progress_log
       )
       worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
       as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))

@@ -40,44 +40,19 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
   return(plot)
 }
 
-plot_post_fits_all <- function(data, post_ns, post_2, post_1) {
-  ys_long <- as.data.frame.table(data)
-  names(ys_long) <- c("time", "unit", "obs")
-  ys_long$time <- as.integer(ys_long$time)
+# Observed series (grey) and the three posterior-mean fits (nonstationary black;
+# stationary weak/strong blue solid/dashed) for a single unit. data, post_ns, post_2,
+# post_1 are all time x unit matrices; `unit` selects the column to show.
+plot_post_fits_stat <- function(data, post_ns, post_2, post_1, unit) {
+  series <- function(m) data.frame(time = seq_len(nrow(m)), obs = m[, unit])
 
-  means_ns <- as.data.frame.table(post_ns)
-  names(means_ns) <- c("time", "unit", "obs")
-  means_ns$time <- as.integer(means_ns$time)
-
-  means_2 <- as.data.frame.table(post_2)
-  names(means_2) <- c("time", "unit", "obs")
-  means_2$time <- as.integer(means_2$time)
-
-  means_1 <- as.data.frame.table(post_1)
-  names(means_1) <- c("time", "unit", "obs")
-  means_1$time <- as.integer(means_1$time)
-
-  plot <- ggplot() +
-    geom_line(
-      data = ys_long,
-      aes(x = time, y = obs), color = "grey"
-    ) +
-    geom_line(
-      data = means_ns,
-      aes(x = time, y = obs), color = "black"
-    ) +
-    geom_line(
-      data = means_2,
-      aes(x = time, y = obs), color = "blue",
-    ) +
-    geom_line(
-      data = means_1,
-      aes(x = time, y = obs), color = "blue", linetype = "dashed"
-    ) +
-    facet_wrap(vars(unit), ncol = 2, scales = "free_y") +
+  plot <- ggplot(mapping = aes(x = time, y = obs)) +
+    geom_line(data = series(data), color = "grey") +
+    geom_line(data = series(post_ns), color = "black") +
+    geom_line(data = series(post_2), color = "blue") +
+    geom_line(data = series(post_1), color = "blue", linetype = "dashed") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
-    theme(strip.background = element_rect(fill = "white", color = "black")) +
     xlab("Time") +
     ylab("Outcome")
 
