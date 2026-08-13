@@ -49,7 +49,7 @@ sample_model <- function(
 
   model_sample <- ife_mod$sample(
     data = stat_data,
-    parallel_chains = n_chains,
+    parallel_chains = 1,
     chains = n_chains,
     iter_warmup = iter,
     iter_sampling = iter,
