@@ -8,11 +8,15 @@ ife_mod <- cmdstan_model(stan_file = "../ife_named.stan")
 
 sample_model <- function(
     N_units = 8, T_times = 20, K_latent = 4,
-    data = NULL, overall_scales = NULL, err_scale = 0.05,
+    data = NULL, overall_scales = NULL, fit_scales = NULL, err_scale = 0.05,
     err_scale_mean = 0, err_scale_sd = 0,
-    autocor_a, autocor_b, nonstationary, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
-    num_treated, type = "prior_pred", iter = 1000, quiet = TRUE, ad = 0.98,
-    seed = NULL, n_chains = 4, log_file = NULL, log_label = NULL) {
+    autocor_a, autocor_b, alpha_diag = 0, nonstationary, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
+    num_treated, type = "prior_pred",
+    iter = 1000, iter_warm = NULL, quiet = TRUE, 
+    ad = 0.98, max_treedepth = 10, n_chains = 4, parallel_chains = 1,
+    seed = NULL, log_file = NULL, log_label = NULL,
+    return_draws = NULL, init = NULL,
+    pathfinder_init = FALSE) {
   stopifnot(type %in% c("prior_pred", "posterior"))
   stopifnot(0 < autocor_a)
   stopifnot(0 < autocor_b)
@@ -37,45 +41,48 @@ sample_model <- function(
     s_tau = err_scale_sd,
     sigma_data =
       if (is.null(overall_scales)) rep(0, N_units) else overall_scales,
-    fit_overall_scales = if (type == "prior_pred") 0 else 1,
+    # fit_scales overrides the default (estimate sigma in posterior, fix in prior_pred):
+    # fit_scales = 0 fixes sigma to the passed overall_scales. The loadings then carry any residual per-unit scale.
+    fit_overall_scales = if (!is.null(fit_scales)) fit_scales else if (type == "prior_pred") 0 else 1,
     nonstationary = nonstationary,
     unit_intercepts = include_ints,
     factor_means = include_factor_means,
     sample_posterior = (type == "posterior"),
     num_treated = num_treated,
     gamma_scale = int_scale,
-    gamma_loc = int_loc
+    gamma_loc = int_loc,
+    alpha_diag = alpha_diag
   )
+
+  # Optional Pathfinder warm start: seed every chain from a draw in the dominant lp mode, discarding modes which are vanishingly tiny compared to the dominant mode.
+  init_arg <- if (isTRUE(pathfinder_init)) {
+    pfi <- pathfinder_inits(ife_mod, stat_data, n_chains, seed = seed, quiet = quiet)
+    if (is.null(pfi)) (if (is.null(init)) 2 else init) else pfi
+  } else if (is.null(init)) 2 else init
 
   model_sample <- ife_mod$sample(
     data = stat_data,
-    parallel_chains = 1,
+    parallel_chains = parallel_chains,
     chains = n_chains,
-    iter_warmup = iter,
+    iter_warmup = ifelse(is.null(iter_warm), iter, iter_warm),
     iter_sampling = iter,
     adapt_delta = ad,
+    max_treedepth = max_treedepth,
+    init = init_arg,
     refresh = if (quiet) 0 else 100,
     show_exceptions = !quiet,
     show_messages = !quiet,
     seed = seed
   )
 
-  # Optionally note this fit's sampler diagnostics to a shared log, tagged with the
-  # caller's label, so Stan warnings can be cross-correlated with the simulation rep.
-  # Alongside the divergence/treedepth/E-BFMI counts we log two mixing canaries: the
-  # bulk ESS of the first treatment effect, and the max R-hat over the *free parameters*
-  # (not the deterministic transformed/generated quantities) -- poor mixing anywhere,
-  # e.g. a weakly identified loading, can bias delta even when delta's own R-hat is
-  # fine. A single rhat+ess pass over just the parameter block keeps it cheap
-  # (delta_raw[1] == delta[1]; Lambda's structural zeros give NaN R-hat, which we drop),
-  # and it is wrapped so a summary hiccup can never abort the study. Only problematic
-  # fits are logged, so a clean run leaves the log to the per-rep progress lines.
-  if (!is.null(log_file)) {
+  # Sampler diagnostics (posterior fits only): divergences, max-treedepth hits, min
+  # E-BFMI, plus a couple model-specific checks
+  # Computed once and returned (see `sampler_diag` in the posterior list) for 
+  # offline analysis, and  optionally written to a shared log tagged with log_label
+  # for cross-correlating warnings with the simulation rep. 
+  sampler_diag <- NULL
+  if (type == "posterior") {
     ds <- model_sample$diagnostic_summary(quiet = TRUE)
-    n_div <- sum(ds$num_divergent)
-    n_tree <- sum(ds$num_max_treedepth)
-    ebfmi_min <- suppressWarnings(min(ds$ebfmi))
-
     mixing <- tryCatch(
       {
         param_vars <- intersect(
@@ -93,16 +100,35 @@ sample_model <- function(
       },
       error = function(e) list(rhat_max = NA_real_, ess_delta1 = NA_real_)
     )
-    rhat_max <- mixing$rhat_max
-    ess_delta1 <- mixing$ess_delta1
+    # Minor-mode flag from the per-chain mean lp__: n_offmode counts every chain more than 5 below
+    # the best chain; lp_gap_max is the worst gap.
+    lp_gap_max <- NA_real_; n_offmode <- NA_integer_
+    lpc <- tryCatch(colMeans(posterior::extract_variable_matrix(model_sample$draws("lp__"), "lp__")),
+      error = function(e) NULL)
+    if (!is.null(lpc)) { g <- max(lpc) - lpc; lp_gap_max <- max(g); n_offmode <- sum(g > 5) }
+    sampler_diag <- list(
+      n_div = sum(ds$num_divergent),
+      n_tree = sum(ds$num_max_treedepth),
+      ebfmi_min = suppressWarnings(min(ds$ebfmi)),
+      rhat_max = mixing$rhat_max,
+      ess_delta1 = mixing$ess_delta1,
+      n_offmode = n_offmode,
+      lp_gap_max = lp_gap_max
+    )
 
-    if (n_div > 0 || n_tree > 0 || (is.finite(ebfmi_min) && ebfmi_min < 0.3) ||
-      (is.finite(ess_delta1) && ess_delta1 < 100) ||
-      (is.finite(rhat_max) && rhat_max > 1.01)) {
+    # Log only problematic fits, so a clean run leaves the log to the progress lines.
+    if (!is.null(log_file) && (
+      sampler_diag$n_div > 0 || sampler_diag$n_tree > 0 ||
+        (is.finite(sampler_diag$ebfmi_min) && sampler_diag$ebfmi_min < 0.3) ||
+        (is.finite(sampler_diag$ess_delta1) && sampler_diag$ess_delta1 < 100) ||
+        (is.finite(sampler_diag$rhat_max) && sampler_diag$rhat_max > 1.01) ||
+        (is.finite(sampler_diag$n_offmode) && sampler_diag$n_offmode > 0))) {
       cat(sprintf(
-        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f\n",
-        format(Sys.time(), "%H:%M"), log_label, n_div, n_tree,
-        ebfmi_min, ess_delta1, rhat_max
+        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f n_offmode=%d lp_gap_max=%.1f\n",
+        format(Sys.time(), "%H:%M"), log_label,
+        sampler_diag$n_div, sampler_diag$n_tree, sampler_diag$ebfmi_min,
+        sampler_diag$ess_delta1, sampler_diag$rhat_max,
+        sampler_diag$n_offmode, sampler_diag$lp_gap_max
       ), file = log_file, append = TRUE)
     }
   }
@@ -171,7 +197,10 @@ sample_model <- function(
       abs_cors_err = cor_err_mean,
       err_scale = err_scale,
       time_cor_pval = time_cor_pval,
-      loc_cor_pval = loc_cor_pval
+      loc_cor_pval = loc_cor_pval,
+      sampler_diag = sampler_diag,
+      draws = if (!is.null(return_draws)) model_sample$draws(return_draws) else NULL,
+      sampler_draws = if (!is.null(return_draws)) model_sample$sampler_diagnostics() else NULL
     ))
   }
 }

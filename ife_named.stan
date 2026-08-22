@@ -70,6 +70,11 @@ data {
   real<lower=0> m_tau;
   real<lower=0> s_tau;
 
+  // Shape for a zero-avoiding inverse-gamma prior on the loading diagonal. > 2 activates
+  // it (finite second moment, so the unit-scale property is preserved); <= 2 falls back
+  // to the default half-normal diagonal.
+  real alpha_diag;
+
 }
 
 transformed data {
@@ -242,9 +247,19 @@ model {
   // applied downstream in Y_means, so the loadings as they enter the outcome
   // have scale sigma[n] / sqrt(min(K, n)) -- the paper's sigma_i / sqrt(min(K, i)).
   // The positive diagonal comes from the cholesky_factor_cov type, making the
-  // diagonal prior a half-normal (the paper's normal_+).
+  // default diagonal prior a half-normal (the paper's normal_+). When alpha_diag > 2 the
+  // diagonal (rows 1..K) instead gets a zero-avoiding inverse-gamma with the same second
+  // moment 1/min(K, n) -- so the unit-scale property is preserved while the near-zero
+  // diagonals that create local modes are repelled.
   for(n in 1:M_units) {
-    Lambda[n,1:min(K_latent, n)] ~ normal(0, 1 / sqrt(min(K_latent, n)));
+    if(alpha_diag > 2 && n <= K_latent) {
+      if(n > 1) {
+        Lambda[n, 1:(n - 1)] ~ normal(0, 1 / sqrt(n));
+      }
+      Lambda[n, n] ~ inv_gamma(alpha_diag, sqrt((alpha_diag - 1) * (alpha_diag - 2) / n));
+    } else {
+      Lambda[n, 1:min(K_latent, n)] ~ normal(0, 1 / sqrt(min(K_latent, n)));
+    }
   }
 
   gamma_raw ~ std_normal();
