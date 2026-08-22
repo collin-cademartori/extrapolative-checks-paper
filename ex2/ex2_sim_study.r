@@ -10,7 +10,7 @@ library(doRNG)
 library(purrr)
 
 # Worker count: pass as the first CLI arg (e.g. `Rscript ex2_sim_study.r 4`),
-# otherwise a conservative default. 
+# otherwise a conservative default.
 requested_cores <- suppressWarnings(as.integer(commandArgs(trailingOnly = TRUE)[1]))
 n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
   requested_cores
@@ -36,6 +36,7 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
 })))
 
 source("../sample_model.r")
+source("../pathfinder_init.r")
 source("../plotting.r")
 
 ruv <- function(d) {
@@ -57,61 +58,88 @@ worker_progress <- function(label, logfile = "progress.log") {
   ), file = logfile, append = TRUE)
 }
 
+# Data-driven anchor ordering for the triangular (Cholesky) loadings. Keeps the treated
+# unit (column 1) first, then greedily picks the untreated columns most orthogonal to
+# those already chosen so the leading K x K loading block is
+# full rank -- giving every factor a distinct anchor and avoiding near-zero
+# Cholesky diagonals. This is a reparameterization only: the
+# fitted means, treatment effect, and (permutation-invariant) check statistics do not
+# depend on the choice; only the per-unit outputs need mapping back (see below).
+anchor_order <- function(y, K) {
+  N <- ncol(y)
+  yc <- scale(y, center = TRUE, scale = FALSE)
+  sel <- 1L
+  remaining <- setdiff(seq_len(N), sel)
+  while (length(sel) < K && length(remaining) > 0) {
+    Q <- qr.Q(qr(yc[, sel, drop = FALSE]))
+    resid <- yc[, remaining, drop = FALSE] - Q %*% crossprod(Q, yc[, remaining, drop = FALSE])
+    pick <- remaining[which.max(colSums(resid^2))]
+    sel <- c(sel, pick)
+    remaining <- setdiff(remaining, pick)
+  }
+  c(sel, remaining)
+}
+
+# Map a per-untreated-unit vector returned from a fit on anchor-permuted data back to
+# the original unit order. `perm` is the column permutation (perm[1] == 1, the treated
+# unit); element j of `v` belongs to permuted column j + 1 = original column perm[j+1].
+unpermute_untreated <- function(v, perm) {
+  out <- numeric(length(v))
+  out[perm[-1] - 1] <- v
+  out
+}
+
 # Adversarial DGP for the intercepts example (paper Section 5): untreated units
 # split into three groups differing in their pre-treatment correlation with the
 # treated unit and their long-run average, so location and correlation are
 # entangled in a way the unit-intercepts model wrongly assumes independent.
 sim_model_intercepts <- function(
-    N_unc = 5, N_comp_true = 2, N_comp_spur = 2, T_times = 20, T_treated = 5, K_unc = 3, sim = 0.9) {
-  f_treat <- 8 + arima.sim(model = list(ar = 0.96), n = T_times)
+    N_unc = 2, N_comp_true = 2, N_comp_spur = 2, T_times = 30, T_treated = 5,
+    K_unc = 1, sim = 0.9) {
+  N_units <- 1 + N_comp_true + N_comp_spur + N_unc
+  K_gen <- 2 + K_unc
 
+  f_treat <- 6 + arima.sim(model = list(ar = 0.9), n = T_times)
   f_treat_sd <- 1.9
 
-  # f_alt matches the treated factor pre-treatment, then diverges downward over
-  # the treatment window -- the driver of the "spurious" comparators.
-  f_alt <- (f_treat - 8) +
+  # f_alt matches the treated factor pre-treatment, then diverges downward over the
+  # treatment window -- the driver of the "spurious" comparators.
+  f_alt <- (f_treat - 6) +
     c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
-  # Reject until the "uncorrelated" factors are genuinely uncorrelated (< 0.4)
-  # with the treated factor.
+  # Reject until the "uncorrelated" factors are genuinely uncorrelated with the
+  # treated factor.
   f_unc <- matrix(nrow = K_unc, ncol = T_times)
   cor_unc <- Inf
-  while (cor_unc > 0.4) {
+  while (cor_unc > 0.01) {
     for (k in 1:K_unc) {
-      f_unc[k, ] <- rnorm(1, 4, 2) + arima.sim(model = list(ar = 0.96), n = T_times)
+      f_unc[k, ] <- rnorm(1, 0, 2) + arima.sim(model = list(ar = 0.9), n = T_times)
     }
     cor_unc <- max(abs(cor(t(f_unc), t(t(f_treat)))))
   }
 
   facs <- rbind(f_treat, f_alt, f_unc)
-
-  N_units <- 1 + N_comp_true + N_comp_spur + N_unc
-  K_gen <- 2 + K_unc
   loads <- matrix(nrow = N_units, ncol = K_gen)
-
   loads[1, ] <- c(1, rep(0, K_gen - 1))
-
   # True comparators load on the treated factor (genuine correlation throughout).
-  for (n in 1:N_comp_true) {
-    loads[1 + n, ] <- c(sqrt(0.9), 0, sqrt(1 - 0.9) * ruv(K_gen - 2))
+  # seq_len (not 1:N) so a group size of 0 yields an empty loop, not 1:0 = c(1, 0).
+  for (n in seq_len(N_comp_true)) {
+    loads[1 + n, ] <- c(sqrt(sim), 0, sqrt(1 - sim) * ruv(K_gen - 2))
   }
-
   # Spurious comparators load on f_alt (pre-treatment correlation only).
-  for (n in 1:N_comp_spur) {
+  for (n in seq_len(N_comp_spur)) {
     loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
   }
-
-  # Uncorrelated units.
-  for (n in 1:N_unc) {
+  # Uncorrelated units (fill to a fixed total; carry no shared-factor signal).
+  for (n in seq_len(N_unc)) {
     loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0, ruv(K_gen - 2))
   }
 
+  # Treated and true comparators sit high (via f_treat), spurious low (via f_alt), so
+  # correlation with the treated does not determine location -- contrary to the
+  # unit-intercepts model's assumption. Y is returned T x N (the fit orientation).
   lat <- loads %*% facs
-  # Intercepts are the units' long-run averages: the treated and true comparators
-  # sit high, the spurious comparators low -- so correlation with the treated does
-  # not determine location, contrary to the unit-intercepts model's assumption.
-
-  Y <- lat + rnorm(nrow(lat) * ncol(lat), sd = 0.05 * max(apply(lat, 1, sd)))
+  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = 0.1 * max(apply(lat, 1, sd))))
 
   # Ground-truth group of each unit (column), in generating order: the treated unit,
   # the true comparators, the spurious comparators, then the uncorrelated units. The
@@ -123,15 +151,29 @@ sim_model_intercepts <- function(
     rep("uncorrelated", N_unc)
   )
 
-  return(list(Y = t(Y), groups = groups))
+  return(list(Y = Y, groups = groups))
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters = 0, progress_log = NULL) {
-  gen <- sim_model_intercepts(N_unc = 7 - N_comp, N_comp_spur = N_comp, K_unc = 3, sim = sim)
+run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters = 0,
+                               progress_log = NULL) {
+  # Fixed total of 8 units; N_comp spurious comparators trade off against the
+  # uncorrelated fillers (1 treated + 2 true + N_comp spurious + N_unc = 8), so the
+  # swept quantity is the *share* of units spuriously correlated with the treated.
+  N_unc <- 5 - N_comp
+  gen <- sim_model_intercepts(
+    N_unc = N_unc, N_comp_true = 2, N_comp_spur = N_comp, K_unc = 1,
+    sim = sim, T_times = 30
+  )
   test_ys <- gen$Y
 
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
+
+  # Fit on anchor-ordered columns (treated stays first) so the leading K x K loading
+  # block is full rank; per-unit outputs are mapped back to the original order after the
+  # fits. The plots below use the original test_ys.
+  perm <- anchor_order(test_ys, K_latent)
+  fit_ys <- test_ys[, perm]
 
   # Draw both Stan seeds up front, before any sample_model() call: cmdstanr's
   # $sample() advances R's global RNG, so a seed drawn after a fit would not be
@@ -140,35 +182,49 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
 
   fits <- list()
 
-  overall_scales <- apply(test_ys, 2, \(x) sqrt(mean(x ^ 2)))
+  overall_scales <- apply(fit_ys, 2, \(x) sqrt(mean(x ^ 2)))
   fits$no_ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent,
-    overall_scales = overall_scales, err_scale = 0.05,
-    data = test_ys,
+    N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
+    overall_scales = overall_scales,
+    err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+    data = fit_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
     include_factor_means = TRUE,
-    type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
-    n_chains = 1, seed = fit_seeds[1],
+    fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+    type = "posterior", quiet = TRUE, ad = 0.8,
+    iter = 500, iter_warm = 500, max_treedepth = 12,
+    n_chains = 4, seed = fit_seeds[1],
     log_file = progress_log,
     log_label = sprintf("sim %.2g num_comp %d rep %d no_ints", sim, N_comp, rep_i)
   )
   fits$no_ints$name <- "no_ints"
 
-  overall_sds <- apply(test_ys, 2, sd)
+  overall_sds <- apply(fit_ys, 2, sd)
   fits$ints <- sample_model(
-    N_units = 10, T_times = 20, K_latent = K_latent,
-    overall_scales = overall_sds, err_scale = 0.05,
-    data = test_ys,
+    N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
+    overall_scales = overall_sds,
+    err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+    data = fit_ys,
     autocor_a = 90, autocor_b = 10,
     nonstationary = FALSE, num_treated = 5,
     include_ints = TRUE, int_scale = 3, int_loc = 4,
-    type = "posterior", quiet = TRUE, ad = 0.95, iter = 1000,
-    n_chains = 1, seed = fit_seeds[2],
+    fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+    type = "posterior", quiet = TRUE, ad = 0.8,
+    iter = 500, iter_warm = 500, max_treedepth = 12,
+    n_chains = 4, seed = fit_seeds[2],
     log_file = progress_log,
     log_label = sprintf("sim %.2g num_comp %d rep %d ints", sim, N_comp, rep_i)
   )
   fits$ints$name <- "ints"
+
+  # Map per-unit model outputs (indexed by permuted untreated columns) back to the
+  # original unit order, so downstream storage and the plots align with test_ys /
+  # gen$groups. Scalar outputs (delta, loc_cor_pval, pred_perc) are permutation-invariant.
+  for (m in c("no_ints", "ints")) {
+    fits[[m]]$cor_sq <- unpermute_untreated(fits[[m]]$cor_sq, perm)
+    fits[[m]]$abs_cors_err <- unpermute_untreated(fits[[m]]$abs_cors_err, perm)
+  }
 
   res <- fits |>
     map(function(pfit) {
@@ -228,13 +284,15 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 5, rep_i = NA, plot_iters
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed, plot_iters = 3) {
+run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, plot_iters = 3) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
   # extract_variable_array() call, ggplot2 for the per-condition figures.
   exp_vars <- c(
     "run_sim_intercepts", "sim_model_intercepts", "ruv",
-    "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits"
+    "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits",
+    "anchor_order", "unpermute_untreated",
+    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES"
   )
   exp_packages <- c("cmdstanr", "posterior", "ggplot2")
 
@@ -284,10 +342,10 @@ run_sim_study_intercepts <- function(K_latent = 5, reps, N_comps, sims, seed, pl
 }
 
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 300,
+  reps = 200,
   N_comps = c(2, 3),
-  sims = c(0.7, 0.95),
-  K_latent = 4,
+  sims = c(0.7, 0.9),
+  K_latent = 3,
   seed = 52918,
   plot_iters = 50
 )
