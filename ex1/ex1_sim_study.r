@@ -38,6 +38,7 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
 })))
 
 source("../sample_model.r")
+source("../pathfinder_init.r")
 source("../plotting.r")
 
 # Per-worker progress: each worker appends a running count of completed tasks to a
@@ -71,41 +72,47 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   fits <- list()
 
   fits$nonstat <- sample_model(
+    alpha_diag = 10,
     overall_scales = overall_scales_nonstat, err_scale = 0,
     err_scale_mean = 2,
     err_scale_sd = 2,
     data = test_ys,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 5,
+    fit_scales = FALSE,
     type = "posterior", K_latent = K_latent,
-    iter = 400,
-    n_chains = 1, seed = fit_seeds[1],
+    iter = 1500, iter_warm = 500,
+    n_chains = 4, seed = fit_seeds[1], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d nonstat", i)
   )
   fits$nonstat$name <- "nonstat"
 
   fits$stat_weak <- sample_model(
+    alpha_diag = 10,
     overall_scales = overall_scales_stat, err_scale = 0,
     err_scale_mean = 0.1,
     err_scale_sd = 0.1,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
+    fit_scales = FALSE,
     type = "posterior", K_latent = K_latent,
-    iter = 400,
-    n_chains = 1, seed = fit_seeds[2],
+    iter = 1500, iter_warm = 500,
+    n_chains = 4, seed = fit_seeds[2], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_weak", i)
   )
   fits$stat_weak$name <- "stat_weak"
 
   fits$stat_strong <- sample_model(
-    overall_scales = overall_scales_stat, err_scale = 0.05,
+    alpha_diag = 10,
+    overall_scales = overall_scales_stat, err_scale = 0.1,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
+    fit_scales = FALSE,
     type = "posterior", K_latent = K_latent,
-    iter = 400,
-    n_chains = 1, seed = fit_seeds[3],
+    iter = 1500, iter_warm = 500,
+    n_chains = 4, seed = fit_seeds[3], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_strong", i)
   )
   fits$stat_strong$name <- "stat_strong"
@@ -188,7 +195,8 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
     iter = 2 * reps, seed = pp_seed
   )
 
-  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post")
+  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
+    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
