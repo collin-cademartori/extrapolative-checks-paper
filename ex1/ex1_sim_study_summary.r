@@ -38,10 +38,10 @@ pval_summary <- sim_study_stat |>
   summarize(
     q5_pval_nonstat = quantile(nonstat_time_cor_pval, 0.05),
     q5_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.05),
-    q5_pval_stat_weak = quantile(stat_strong_time_cor_pval, 0.05),
+    q5_pval_stat_strong = quantile(stat_strong_time_cor_pval, 0.05),
     q95_pval_nonstat = quantile(nonstat_time_cor_pval, 0.95),
     q95_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.95),
-    q95_pval_stat_weak = quantile(stat_strong_time_cor_pval, 0.95),
+    q95_pval_stat_strong = quantile(stat_strong_time_cor_pval, 0.95),
   )
 
 cat("\nS1 time-correlation predictive p-value:\n")
