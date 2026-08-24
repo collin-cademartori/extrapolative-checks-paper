@@ -22,13 +22,13 @@ perc_summary <- sim_study_stat |>
   summarize(
     q5_perc_nonstat = quantile(nonstat_pred_perc, 0.05),
     q5_perc_stat_weak = quantile(stat_weak_pred_perc, 0.05),
-    q5_perc_stat_weak = quantile(stat_strong_pred_perc, 0.05),
+    q5_perc_stat_strong = quantile(stat_strong_pred_perc, 0.05),
     q95_perc_nonstat = quantile(nonstat_pred_perc, 0.95),
     q95_perc_stat_weak = quantile(stat_weak_pred_perc, 0.95),
-    q95_perc_stat_weak = quantile(stat_strong_pred_perc, 0.95),
+    q95_perc_stat_strong = quantile(stat_strong_pred_perc, 0.95),
     mean_perc_nonstat = mean(nonstat_pred_perc),
     mean_perc_stat_weak = mean(stat_weak_pred_perc),
-    mean_perc_stat_weak = mean(stat_strong_pred_perc),
+    mean_perc_stat_strong = mean(stat_strong_pred_perc),
   )
 
 cat("\nPer-model 99% interval coverage:\n")
