@@ -138,7 +138,7 @@ parameters {
 
   // Lower-triangular loadings (cholesky_factor_cov) fix the factor rotation for
   // identifiability: unit n loads only on the first min(K, n) factors.
-  cholesky_factor_cov[M_units, K_latent] Lambda;
+  cholesky_factor_cov[M_units, K_latent] Lambda_raw;
 
   vector[unit_intercepts ? M_units : 0] gamma_raw;
 
@@ -147,6 +147,13 @@ parameters {
 }
 
 transformed parameters {
+
+  // Unit-norm rows: sigma carries the per-unit magnitude, Lambda carries direction only.
+  // Leaves each row's ||Lambda_raw|| non-identified (accepted for this first attempt).
+  matrix[M_units, K_latent] Lambda;
+  for (m in 1:M_units) {
+    Lambda[m,:] = Lambda_raw[m,:] / sqrt(dot_self(Lambda_raw[m,:]));
+  }
 
   vector[M_units] sigma;
   if(fit_overall_scales == 1) {
@@ -243,22 +250,21 @@ model {
   to_vector(Phi_innovations) ~ std_normal();
   rho ~ beta(a_rho, b_rho);
 
-  // Loadings prior (paper eq. loadings_prior). The per-unit scale sigma[n] is
-  // applied downstream in Y_means, so the loadings as they enter the outcome
-  // have scale sigma[n] / sqrt(min(K, n)) -- the paper's sigma_i / sqrt(min(K, i)).
-  // The positive diagonal comes from the cholesky_factor_cov type, making the
-  // default diagonal prior a half-normal (the paper's normal_+). When alpha_diag > 2 the
-  // diagonal (rows 1..K) instead gets a zero-avoiding inverse-gamma with the same second
-  // moment 1/min(K, n) -- so the unit-scale property is preserved while the near-zero
-  // diagonals that create local modes are repelled.
+  // Loadings prior. Under the unit-norm reparameterization the *direction* of each row is
+  // what enters the outcome (sigma[n] carries the magnitude), so the prior goes on the RAW
+  // Cholesky factor (no Jacobian needed; it is the sampled parameter). Baseline is a weak
+  // std_normal that identifies the row magnitude and induces a ~uniform direction. When
+  // alpha_diag > 2 the raw diagonal (rows 1..K) instead gets a zero-avoiding inverse-gamma,
+  // repelling the near-zero diagonals that create local modes -- the same device as the
+  // original model, now applied to Lambda_raw. Off-diagonals keep std_normal.
   for(n in 1:M_units) {
     if(alpha_diag > 2 && n <= K_latent) {
       if(n > 1) {
-        Lambda[n, 1:(n - 1)] ~ normal(0, 1 / sqrt(n));
+        Lambda_raw[n, 1:(n - 1)] ~ std_normal();
       }
-      Lambda[n, n] ~ inv_gamma(alpha_diag, sqrt((alpha_diag - 1) * (alpha_diag - 2) / n));
+      Lambda_raw[n, n] ~ inv_gamma(alpha_diag, sqrt((alpha_diag - 1) * (alpha_diag - 2)));
     } else {
-      Lambda[n, 1:min(K_latent, n)] ~ normal(0, 1 / sqrt(min(K_latent, n)));
+      Lambda_raw[n, 1:min(K_latent, n)] ~ std_normal();
     }
   }
 

@@ -12,8 +12,10 @@
 
 # The `parameters` block of ife_named.stan (constrained draws of these seed every free parameter;
 # zero-length ones -- e.g. sigma_raw when sigma is fixed -- simply won't appear in the draws).
+# Under the unit-norm reparameterization the sampled loadings parameter is Lambda_raw (the normalized
+# `Lambda` is a transformed parameter and must NOT be seeded as an init).
 PF_PARAM_BASES <- c("sigma_raw", "tau_param", "omega_sq_param", "Phi_innovations",
-  "Phi_means_param", "rho", "Lambda", "gamma_raw", "delta_raw")
+  "Phi_means_param", "rho", "Lambda_raw", "gamma_raw", "delta_raw")
 
 # Rebuild one nested Stan init list from a single named draw (names like "Lambda[2,1]", "rho[3]",
 # "tau_param[1]"): scalars -> length-1, "v[i]" -> vector, "m[i,j]" -> matrix. Structural zeros of a

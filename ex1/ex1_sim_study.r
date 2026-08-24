@@ -79,7 +79,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     data = test_ys,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 5,
-    fit_scales = FALSE,
+    fit_scales = TRUE,
     type = "posterior", K_latent = K_latent,
     iter = 1500, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[1], pathfinder_init = TRUE,
@@ -95,7 +95,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
-    fit_scales = FALSE,
+    fit_scales = TRUE,
     type = "posterior", K_latent = K_latent,
     iter = 1500, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[2], pathfinder_init = TRUE,
@@ -109,7 +109,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
-    fit_scales = FALSE,
+    fit_scales = TRUE,
     type = "posterior", K_latent = K_latent,
     iter = 1500, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[3], pathfinder_init = TRUE,
@@ -187,8 +187,12 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   study_units <- sample.int(2 * reps, size = reps, replace = FALSE)
   pp_seed <- sample.int(.Machine$integer.max, 1)
 
+  # Generate from the model prior with the SAME zero-avoiding loadings prior the fits use
+  # (alpha_diag = 10), so the study stays well-specified under the unit-norm reparameterization.
+  # Per-unit magnitude is left uniform (overall_scales = 1); sigma is estimated in the fits.
   test_data <- sample_model(
     overall_scales = rep(1, 8), err_scale = 3,
+    alpha_diag = 10,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 0,
     type = "prior_pred", K_latent = K_latent,
