@@ -149,6 +149,19 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       res$pred_perc <- mean(pred_inc)
       res$pred_width <- mean(pred_width)
 
+      # tau, the noise-to-signal ratio: the quantity that decides whether stat_weak collapses onto
+      # nonstat. Under the Cartesian parametrization the error sd is tau * sigma_data[n]*||Lambda[n,:]||,
+      # so tau ~ N / S with S the effective scale -- record it (and how far into its own prior's upper
+      # tail it sits) so scale changes can be judged directly instead of inferred from the plots.
+      tau_draws <- pfit$err_scale
+      res$tau_med <- median(tau_draws)
+      res$tau_q95 <- unname(quantile(tau_draws, 0.95))
+      # prior upper-tail probability of the posterior median, under this fit's own truncated tau prior
+      m_t <- if (pfit$name == "nonstat") 2 else 0.1
+      s_t <- if (pfit$name == "nonstat") 2 else 0.1
+      res$tau_prior_tail <- if (pfit$name == "stat_strong") NA_real_ else
+        (1 - pnorm(res$tau_med, m_t, s_t)) / (1 - pnorm(0, m_t, s_t))
+
       res$time_cor_pval <- pfit$time_cor_pval
 
       absz <- abs(pfit$effect_means / pfit$effect_sds)
