@@ -41,6 +41,19 @@ source("../sample_model.r")
 source("../pathfinder_init.r")
 source("../plotting.r")
 
+# DIAGNOSTICS BRANCH: run the Cartesian variant instead of sample_model.r's default (../ife_named.stan).
+# Cartesian = unconstrained loadings with the error scale anchored to the ESTIMATED signal scale
+# sigma_data[n]*||Lambda[n,:]||, which is algebraically the unit-norm + estimated-sigma model in flat
+# coordinates. Anchoring the error scale to the estimated (not the fixed) scale is what should keep tau
+# inside its prior; the flat coordinates are what removed the divergences in ex2 (408 -> 0).
+# Must be set HERE in the master: sample_model() resolves ife_mod from the global env, and exp_vars
+# below exports both sample_model and ife_mod to the workers. fit_scales stays FALSE -- the per-unit
+# scale is estimated through ||Lambda||, not a separate sigma parameter. PF_PARAM_BASES already names
+# "Lambda", which is this model's loadings parameter, so pathfinder seeds it.
+ife_mod <- cmdstan_model(stan_file = "../ife_named_cartesian.stan")
+stopifnot(basename(ife_mod$stan_file()) == "ife_named_cartesian.stan",
+          "Lambda" %in% PF_PARAM_BASES)
+
 # Per-worker progress: each worker appends a running count of completed tasks to a
 # shared log. cat(append = TRUE) flushes every write, so it shows up live via
 # `tail -f progress.log` -- unlike message()/outfile, which block-buffers a
