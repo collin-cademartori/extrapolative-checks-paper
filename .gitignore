@@ -6,3 +6,6 @@
 ife
 ife_named
 TODO.md
+# compiled cmdstan binaries for the model variants (keep the .stan sources)
+ife_named_*
+!ife_named_*.stan

@@ -234,7 +234,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 1000
+study_reps <- 30
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
