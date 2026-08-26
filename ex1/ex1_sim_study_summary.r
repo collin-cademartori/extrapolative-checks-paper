@@ -127,6 +127,12 @@ sim_study_overfit <- abs(sim_study_stat) |>
   summarize(
     mean_absz = mean(absz),
     mean_mad = mean(pred_mad),
+    # Overfitting of the treated unit's pre-treatment window (the extrapolation basis the
+    # counterfactual is built from): the fraction of that unit's noise absorbed into its fitted
+    # signal. Replaces pred_mad on the overfit plot -- pred_mad is mean|fitted - observed| over ALL
+    # units, so it averages the treated unit together with seven that do not feed the delta estimate,
+    # and it is scale-dependent. See the note in ex1_sim_study.r for the comparison behind this.
+    mean_noise_abs = mean(noise_abs_tr),
     .groups = "drop"
   ) |>
   mutate(
@@ -139,10 +145,10 @@ sim_study_overfit <- abs(sim_study_stat) |>
   )
 
 overfit_plot <- ggplot(data = sim_study_overfit) +
-  geom_line(aes(x = mean_mad, y = mean_absz, group = time), linewidth = 0.8) +
-  geom_label(aes(label = model, x = mean_mad, y = mean_absz), size = 3) +
+  geom_line(aes(x = mean_noise_abs, y = mean_absz, group = time), linewidth = 0.8) +
+  geom_label(aes(label = model, x = mean_noise_abs, y = mean_absz), size = 3) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
-  xlab("Average MAD of Posterior\n Predictive Expectation") +
+  xlab("Fraction of Treated Unit's Pre-Treatment\n Noise Absorbed by the Fitted Signal") +
   ylab("Average Standardized Error of Posterior Expected Treatment Effect") +
   scale_x_continuous(expand = expansion(mult = 0.3)) +
   scale_y_continuous(expand = expansion(mult = 0.2)) +

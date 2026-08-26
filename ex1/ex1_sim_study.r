@@ -71,6 +71,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   test_ys <- test_data$ys[i, , ]
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
+  # Length of the treatment window; the three fits below all pass num_treated = this.
+  num_treated_ex1 <- 5
   overall_scales_stat <- apply(test_ys, 2, sd)
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
@@ -175,6 +177,27 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
       pred_mad <- pfit$mean_abs_diffs
       res$pred_mad <- pred_mad
+
+      # Overfitting of the treated unit's pre-treatment window -- the basis the counterfactual is
+      # extrapolated from, and the only fit that feeds the delta estimate.
+      #   noise_abs_tr = cov(fitted - truth, observed - truth) / var(observed - truth)
+      # i.e. the fraction of THIS unit's noise absorbed into its fitted signal: 1 = interpolation,
+      # 0 = noise ignored. For a linear smoother this estimates tr(H)/n, the effective degrees of
+      # freedom per observation. It cannot be computed in generated quantities because Stan never sees
+      # the truth; here the DGP's latent signal is available as test_data$ys_latent.
+      #
+      # Chosen over mean|fitted - observed| (pred_mad) and over mean|fitted - truth|: across the
+      # sigma/rho configurations tried, noise_abs_tr tracked the delta error (absz) at r ~ +0.77
+      # (within-arm +0.94), versus +0.35 for scale-normalised mean|fitted - truth| and ~0 for the raw
+      # magnitudes. The magnitude says how far the basis is from the truth; only the covariance says
+      # whether that error is ALIGNED WITH THE NOISE, and only noise-aligned error corrupts the
+      # extrapolation.
+      true_ys <- test_data$ys_latent[i, , ]
+      fit_means <- apply(pfit$y_means, c(2, 3), mean)
+      pre_times <- seq_len(T_times - num_treated_ex1)
+      fit_err <- fit_means[pre_times, 1] - true_ys[pre_times, 1]
+      unit_noise <- test_ys[pre_times, 1] - true_ys[pre_times, 1]
+      res$noise_abs_tr <- as.numeric(cov(fit_err, unit_noise) / var(unit_noise))
 
       return(res)
     }) |>
