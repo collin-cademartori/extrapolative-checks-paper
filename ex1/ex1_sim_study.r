@@ -113,8 +113,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     nonstationary = TRUE, num_treated = 5,
     fit_scales = FALSE,
     type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 1000, iter_warm = 500,
-    n_chains = 4, seed = fit_seeds[1], pathfinder_init = TRUE,
+    iter = 2000, iter_warm = 500,
+    n_chains = 3, seed = fit_seeds[1], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d nonstat", i)
   )
   fits$nonstat$name <- "nonstat"
@@ -129,8 +129,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     nonstationary = FALSE, num_treated = 5,
     fit_scales = FALSE,
     type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 1000, iter_warm = 500,
-    n_chains = 4, seed = fit_seeds[2], pathfinder_init = TRUE,
+    iter = 2000, iter_warm = 500,
+    n_chains = 3, seed = fit_seeds[2], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_weak", i)
   )
   fits$stat_weak$name <- "stat_weak"
@@ -149,8 +149,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     nonstationary = FALSE, num_treated = 5,
     fit_scales = FALSE,
     type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 1000, iter_warm = 500,
-    n_chains = 4, seed = fit_seeds[3], pathfinder_init = TRUE,
+    iter = 2000, iter_warm = 500,
+    n_chains = 3, seed = fit_seeds[3], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_strong", i)
   )
   fits$stat_strong$name <- "stat_strong"
@@ -205,6 +205,19 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
       pred_mad <- pfit$mean_abs_diffs
       res$pred_mad <- pred_mad
+
+      # Convergence diagnostics recorded for EVERY fit. progress.log only keeps fits that trip a
+      # threshold, so on its own it cannot show that rhat_M stays reasonable across the run -- the
+      # clean majority would be invisible. rhat_M is the one that certifies delta (see sample_model).
+      sdg <- pfit$sampler_diag
+      res$rhat_max <- sdg$rhat_max
+      res$rhat_M <- sdg$rhat_M
+      res$rhat_estimands <- sdg$rhat_estimands
+      res$rhat_loadings <- sdg$rhat_loadings
+      res$rhat_cor_sq <- sdg$rhat_cor_sq
+      res$n_div <- sdg$n_div
+      res$lp_gap_max <- sdg$lp_gap_max
+      res$ess_delta1 <- sdg$ess_delta1
 
       # Overfitting of the treated unit's pre-treatment window -- the basis the counterfactual is
       # extrapolated from, and the only fit that feeds the delta estimate.

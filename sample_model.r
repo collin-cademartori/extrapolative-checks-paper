@@ -156,6 +156,10 @@ sample_model <- function(
         (is.finite(sampler_diag$ebfmi_min) && sampler_diag$ebfmi_min < 0.3) ||
         (is.finite(sampler_diag$ess_delta1) && sampler_diag$ess_delta1 < 100) ||
         (is.finite(sampler_diag$rhat_max) && sampler_diag$rhat_max > 1.01) ||
+        # rhat_M is NOT a subset of rhat_max (that is computed over the parameters, while
+        # Lambda_Phi is a transformed quantity), so M can in principle be poor while the raw
+        # parameters look fine. Trip on it in its own right.
+        (is.finite(sampler_diag$rhat_M) && sampler_diag$rhat_M > 1.01) ||
         (is.finite(sampler_diag$n_offmode) && sampler_diag$n_offmode > 0))) {
       cat(sprintf(
         "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f rhat_M=%.3f rhat_est=%.3f rhat_load=%.3f rhat_corsq=%.3f lp_gap_max=%.1f\n",
