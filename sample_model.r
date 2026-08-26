@@ -83,22 +83,52 @@ sample_model <- function(
   sampler_diag <- NULL
   if (type == "posterior") {
     ds <- model_sample$diagnostic_summary(quiet = TRUE)
+    # rhat is reported three ways, because a single max over all parameters conflates two very
+    # different situations. The loadings are only weakly identified: their marginals are bimodal (a
+    # loading configuration can re-label or flip sign at essentially equal log density), so Lambda
+    # entries mix slowly and rhat on them spikes intermittently -- with n_offmode = 0, no divergences,
+    # and healthy ESS everywhere else. Taking |Lambda| removes it (rhat -> ~1.00, ESS x3-6), which is
+    # what identifies it as a configuration ambiguity rather than a failure to converge.
+    #   rhat_max       : all parameters (kept, so nothing is hidden)
+    #   rhat_loadings  : Lambda / Phi_innovations -- expected looser when factors are weakly separated
+    #   rhat_estimands : delta, tau, rho, sigma -- rotation-invariant; THESE must be clean
+    #   rhat_cor_sq    : the squared loading correlation actually reported from the loadings. Being a
+    #                    squared dot product it is invariant to the sign/label ambiguity above, so it
+    #                    is the right convergence check for the loadings' scientific content.
+    #   rhat_M         : max over the latent-mean matrix M = Lambda_Phi = Phi * Lambda'. THE key
+    #                    diagnostic. In ife_named the likelihood depends on (Lambda, Phi) only through
+    #                    M, and delta's prior involves only sigma[1]/omega_sq, so
+    #                        delta  _||_  (Lambda, Phi)  |  M, sigma, tau.
+    #                    Non-mixing confined to a fiber {(L,P): L P' = M} therefore CANNOT affect
+    #                    delta, while any missed mode carrying a different delta must carry a
+    #                    different M and so shows up here. Empirically it discriminates: at the study's
+    #                    K = 4, Lambda R-hat of 1.038 came with rhat_M = 1.004 (fiber-internal, benign),
+    #                    whereas an under-specified K = 3 fit gave Lambda 1.567 AND rhat_M 1.24 -- a
+    #                    genuine warning that delta's own R-hat (1.002 there) would have missed.
+    #                    NOTE this argument requires the error scale NOT to involve ||Lambda||.
     mixing <- tryCatch(
       {
-        param_vars <- intersect(
-          c(
-            "Lambda", "Phi_innovations", "sigma_raw", "rho", "gamma_raw",
-            "delta_raw", "omega_sq_param", "Phi_means_param", "tau_param"
-          ),
-          model_sample$metadata()$stan_variables
-        )
-        ps <- model_sample$summary(param_vars, "rhat", "ess_bulk")
+        sv <- model_sample$metadata()$stan_variables
+        pick <- function(nms) intersect(nms, sv)
+        all_vars <- pick(c("Lambda", "Phi_innovations", "sigma_raw", "rho", "gamma_raw",
+          "delta_raw", "omega_sq_param", "Phi_means_param", "tau_param"))
+        ps <- model_sample$summary(all_vars, "rhat", "ess_bulk")
+        grp <- function(bases) {
+          v <- pick(bases); if (!length(v)) return(NA_real_)
+          suppressWarnings(max(model_sample$summary(v, "rhat")$rhat, na.rm = TRUE))
+        }
         list(
           rhat_max = suppressWarnings(max(ps$rhat, na.rm = TRUE)),
+          rhat_loadings = grp(c("Lambda", "Phi_innovations")),
+          rhat_estimands = grp(c("delta_raw", "tau_param", "rho", "sigma_raw",
+            "gamma_raw", "omega_sq_param", "Phi_means_param")),
+          rhat_cor_sq = grp("cor_sq"),
+          rhat_M = grp("Lambda_Phi"),
           ess_delta1 = ps$ess_bulk[match("delta_raw[1]", ps$variable)]
         )
       },
-      error = function(e) list(rhat_max = NA_real_, ess_delta1 = NA_real_)
+      error = function(e) list(rhat_max = NA_real_, rhat_loadings = NA_real_,
+        rhat_estimands = NA_real_, rhat_cor_sq = NA_real_, rhat_M = NA_real_, ess_delta1 = NA_real_)
     )
     # Minor-mode flag from the per-chain mean lp__: n_offmode counts every chain more than 5 below
     # the best chain; lp_gap_max is the worst gap.
@@ -111,6 +141,10 @@ sample_model <- function(
       n_tree = sum(ds$num_max_treedepth),
       ebfmi_min = suppressWarnings(min(ds$ebfmi)),
       rhat_max = mixing$rhat_max,
+      rhat_loadings = mixing$rhat_loadings,
+      rhat_estimands = mixing$rhat_estimands,
+      rhat_cor_sq = mixing$rhat_cor_sq,
+      rhat_M = mixing$rhat_M,
       ess_delta1 = mixing$ess_delta1,
       n_offmode = n_offmode,
       lp_gap_max = lp_gap_max
@@ -124,11 +158,12 @@ sample_model <- function(
         (is.finite(sampler_diag$rhat_max) && sampler_diag$rhat_max > 1.01) ||
         (is.finite(sampler_diag$n_offmode) && sampler_diag$n_offmode > 0))) {
       cat(sprintf(
-        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f n_offmode=%d lp_gap_max=%.1f\n",
+        "[%s] %s  STAN div=%d treedepth=%d ebfmi_min=%.2f ess_delta1=%.0f rhat_max=%.3f rhat_M=%.3f rhat_est=%.3f rhat_load=%.3f rhat_corsq=%.3f lp_gap_max=%.1f\n",
         format(Sys.time(), "%H:%M"), log_label,
         sampler_diag$n_div, sampler_diag$n_tree, sampler_diag$ebfmi_min,
-        sampler_diag$ess_delta1, sampler_diag$rhat_max,
-        sampler_diag$n_offmode, sampler_diag$lp_gap_max
+        sampler_diag$ess_delta1, sampler_diag$rhat_max, sampler_diag$rhat_M,
+        sampler_diag$rhat_estimands, sampler_diag$rhat_loadings, sampler_diag$rhat_cor_sq,
+        sampler_diag$lp_gap_max
       ), file = log_file, append = TRUE)
     }
   }

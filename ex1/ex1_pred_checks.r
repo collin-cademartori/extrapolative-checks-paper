@@ -3,12 +3,9 @@
 source("../sample_model.r")
 source("../plotting.r")
 
-# Use the same model as ex1_sim_study: the Cartesian variant, whose error scale is anchored to the
-# ESTIMATED signal scale sigma_data[n]*||Lambda[n,:]|| rather than to sigma_data alone. That changes
-# the prior predictive (the error co-scales with the loadings), so these figures must be generated
-# from the same model the study fits, not from sample_model.r's default ../ife_named.stan.
-ife_mod <- cmdstan_model(stan_file = "../ife_named_cartesian.stan")
-stopifnot(basename(ife_mod$stan_file()) == "ife_named_cartesian.stan")
+# Same model as ex1_sim_study: sample_model.r's default ../ife_named.stan, whose error scale is
+# tau*sigma with no ||Lambda|| term. Stated explicitly so these figures cannot silently diverge from
+# the model the study fits.
 
 
 # This seed reproduces the paper's figures; change it to vary the prior
