@@ -116,8 +116,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 5,
     fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent,
-    iter = 1500, iter_warm = 500,
+    type = "posterior", K_latent = K_latent, ad = 0.8,
+    iter = 1000, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[1], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d nonstat", i)
   )
@@ -132,8 +132,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
     fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent,
-    iter = 1500, iter_warm = 500,
+    type = "posterior", K_latent = K_latent, ad = 0.8,
+    iter = 1000, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[2], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_weak", i)
   )
@@ -146,8 +146,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
     fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent,
-    iter = 1500, iter_warm = 500,
+    type = "posterior", K_latent = K_latent, ad = 0.8,
+    iter = 1000, iter_warm = 500,
     n_chains = 4, seed = fit_seeds[3], pathfinder_init = TRUE,
     log_file = progress_log, log_label = sprintf("unit %d stat_strong", i)
   )
@@ -258,7 +258,10 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   pp_seed <- sample.int(.Machine$integer.max, 1)
 
   test_data <- sample_model(
-    overall_scales = rep(1, 8), err_scale = 3,
+    # err_scale = 2 matches the nonstationary model actually being fit (its tau prior is
+    # centred at err_scale_mean = 2), so the DGP is not generating data noisier than any of the
+    # fitted models expects.
+    overall_scales = rep(1, 8), err_scale = 2,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 0,
     type = "prior_pred", K_latent = K_latent,
