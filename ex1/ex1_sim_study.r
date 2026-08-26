@@ -73,7 +73,28 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   T_times <- nrow(test_ys)
   # Length of the treatment window; the three fits below all pass num_treated = this.
   num_treated_ex1 <- 5
-  overall_scales_stat <- apply(test_ys, 2, sd)
+  # Prior scale for the stationary fits: a multiple of RMS(y), not sd(y).
+  #
+  # RMS rather than sd because these models have no intercept and no factor means, so the level of
+  # each series must be produced by the factors themselves; the second moment about zero is what the
+  # factors have to reproduce.
+  #
+  # The multiple corrects for the realised amplitude of a near-unit-root factor over a short window.
+  # The factors have unit LONG-RUN variance, but at rho ~ 0.97 over T = 20 a realised path's sample sd
+  # averages only ~0.38 (closed form: E[s^2] = [(T-1) - (2/T)*sum_k (T-k) rho^k] / (T-1)), because the
+  # sample mean absorbs the low-frequency wandering. Without the correction the factors cannot generate
+  # the observed excursion, the shortfall is booked as error, and tau is dragged far above its
+  # N(0.1, 0.1) prior -- at which point stat_weak mimics nonstat by inflating noise rather than by
+  # fitting structure, which is not the phenomenon the example is meant to show.
+  #
+  # Measured on these datasets: 1.0x -> tau 0.35 (0.7% prior tail, a clear contradiction);
+  # 1.5x -> 0.275 (3.7-7.1%); 2.0x -> 0.225 (12.8%, inside the bulk); 2.5x -> 0.186 with no further
+  # change in the overfitting or delta metrics. The prior predictive is consistent with this range
+  # (it centres on the observed sd at ~1.7x) but is too diffuse to discriminate on its own -- a
+  # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
+  # consistency of tau is what selects the multiple.
+  stat_scale_multiple <- 2
+  overall_scales_stat <- stat_scale_multiple * apply(test_ys, 2, function(y) sqrt(mean(y^2)))
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
   # be the wrong, inflating scale for integrated data.
