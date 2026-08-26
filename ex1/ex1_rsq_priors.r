@@ -8,6 +8,14 @@
 source("../sample_model.r")
 source("../plotting.r")
 
+# Use the same model as ex1_sim_study: the Cartesian variant, whose error scale is anchored to the
+# ESTIMATED signal scale sigma_data[n]*||Lambda[n,:]|| rather than to sigma_data alone. That changes
+# the prior predictive (the error co-scales with the loadings), so these figures must be generated
+# from the same model the study fits, not from sample_model.r's default ../ife_named.stan.
+ife_mod <- cmdstan_model(stan_file = "../ife_named_cartesian.stan")
+stopifnot(basename(ife_mod$stan_file()) == "ife_named_cartesian.stan")
+
+
 plot_prior_absr <- function(absrs) {
   absr_df <- stack(absrs)
   names(absr_df) <- c("absr", "model")
@@ -33,7 +41,7 @@ overall_scales_stat <- rep(1, 8)
 overall_scales_nonstat <- rep(1, 8)
 
 nonstat_prior_data <- sample_model(
-  overall_scales = 0.5 * overall_scales_nonstat,
+  overall_scales = 0.5 * overall_scales_nonstat, alpha_diag = 10,
   err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
@@ -44,7 +52,7 @@ nonstat_prior_data <- sample_model(
 nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data <- sample_model(
-  overall_scales = 2 * overall_scales_stat,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 10,
   err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
   data = NULL,
   autocor_a = 97, autocor_b = 3,
@@ -55,8 +63,12 @@ stat_prior_data <- sample_model(
 stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data1 <- sample_model(
-  overall_scales = 2 * overall_scales_stat,
-  err_scale = 0.05,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 10,
+  # Matches ex1_sim_study's stat_strong: the same truncated-normal form as the weaker prior with
+  # location and scale halved, rather than a fixed tau. Estimating tau under a tighter prior makes
+  # the two stationary models differ in the STRENGTH of the error prior, not in whether the error
+  # scale is uncertain at all.
+  err_scale = 0, err_scale_mean = 0.05, err_scale_sd = 0.05,
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
@@ -66,7 +78,7 @@ stat_prior_data1 <- sample_model(
 stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 weak_prior_data <- sample_model(
-  overall_scales = 2 * overall_scales_stat,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 10,
   err_scale = 0, err_scale_mean = 0.5, err_scale_sd = 0.4,
   data = NULL,
   autocor_a = 97, autocor_b = 3,

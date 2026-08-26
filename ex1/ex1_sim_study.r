@@ -141,7 +141,13 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
   fits$stat_strong <- sample_model(
     alpha_diag = 10,
-    overall_scales = overall_scales_stat, err_scale = 0.1,
+    # Stronger error prior: the same truncated-normal form as stat_weak, with the location and
+    # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
+    # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
+    # tau under a tighter prior isolates the strength of the prior as the only difference.
+    overall_scales = overall_scales_stat, err_scale = 0,
+    err_scale_mean = 0.05,
+    err_scale_sd = 0.05,
     data = test_ys,
     autocor_a = 97, autocor_b = 3,
     nonstationary = FALSE, num_treated = 5,
@@ -179,11 +185,16 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       tau_draws <- pfit$err_scale
       res$tau_med <- median(tau_draws)
       res$tau_q95 <- unname(quantile(tau_draws, 0.95))
-      # prior upper-tail probability of the posterior median, under this fit's own truncated tau prior
-      m_t <- if (pfit$name == "nonstat") 2 else 0.1
-      s_t <- if (pfit$name == "nonstat") 2 else 0.1
-      res$tau_prior_tail <- if (pfit$name == "stat_strong") NA_real_ else
-        (1 - pnorm(res$tau_med, m_t, s_t)) / (1 - pnorm(0, m_t, s_t))
+      # prior upper-tail probability of the posterior median, under this fit's own truncated tau
+      # prior. All three now estimate tau, so all three get a tail (stat_strong's used to be NA
+      # because its tau was fixed at 0.1).
+      tau_prior <- switch(pfit$name,
+        nonstat     = c(2,    2),
+        stat_weak   = c(0.1,  0.1),
+        stat_strong = c(0.05, 0.05)
+      )
+      res$tau_prior_tail <- (1 - pnorm(res$tau_med, tau_prior[1], tau_prior[2])) /
+        (1 - pnorm(0, tau_prior[1], tau_prior[2]))
 
       res$time_cor_pval <- pfit$time_cor_pval
 
