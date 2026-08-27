@@ -93,14 +93,24 @@ ESCALATE_ITER <- c(8000L, 20000L)
 # and samples for 2000; leaving warmup at 500 while sampling ran to 8000 or 20000 would draw tens of
 # thousands of iterations from a metric and step size adapted on a quarter of a short run.
 #
+# What it does buy is rhat_M, which is what the escalation is keyed on. Warming up longer at FIXED
+# sampling length (iter = 2000) was measured on six of the problem datasets, and in all three
+# stat_strong cases -- the worst arm -- rhat_M improved monotonically with warmup alone:
+#   265 stat_strong  1.092 -> 1.038 -> 1.038   (warm 500 -> 2000 -> 4000)
+#   278 stat_strong  1.017 -> 1.010 -> 1.004
+#   120 stat_strong  1.014 ->   .   -> 1.009
+# with ess_delta1 moving in step (120: 454 -> 734, 278: 1741 -> 1986, 187 stat_weak: 2152 -> 2678).
+# The stat_weak cases were flat, but were already clean. One caveat that the adapt_delta floor below
+# covers: 265 stat_strong picked up 8 divergences at warm = 4000 having had none at 500 or 2000, so
+# longer warmup is not unconditionally benign.
+#
 # Do NOT expect this to move E-BFMI. It was introduced on the hypothesis that it would -- E-BFMI is a
 # function of the adapted metric and step size, both frozen at the end of warmup, so it cannot respond
 # to sampling length, and in the overnight log it never did (278 stat_weak sat at 0.19 -> 0.20 -> 0.20
-# across iter 2000 -> 4000 -> 8000 with warmup pinned at 500). But warming up longer at fixed sampling
-# length was then measured directly on four of the low-E-BFMI datasets, and E-BFMI barely moved
-# (278 stat_weak 0.52 -> 0.59, 187 0.49 -> 0.44 -> 0.54, 203 0.40 -> 0.43 -> 0.39, 265 stat_strong
-# 0.27 -> 0.30). Those same runs did show rhat_M improving on the worst case (265 stat_strong
-# 1.092 -> 1.038 from warmup alone), which is the reason to keep the escalation.
+# across iter 2000 -> 4000 -> 8000 with warmup pinned at 500). The same six-dataset test refuted the
+# warmup version of that hypothesis too: 265 stat_strong 0.27 -> 0.30 -> 0.27, 278 stat_strong
+# 0.47 -> 0.51 -> 0.50, 120 stat_strong 0.33 -> 0.33, 187 stat_weak 0.49 -> 0.44 -> 0.54,
+# 203 stat_weak 0.40 -> 0.43 -> 0.39. See the note on ebfmi_min below.
 #
 # That test also found E-BFMI to be far less a property of the DATASET than it looks: 278 stat_weak
 # scored 0.19 in the study and 0.52 here under an identical configuration differing only in seed. It
