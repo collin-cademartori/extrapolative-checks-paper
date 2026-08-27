@@ -197,15 +197,20 @@ sample_model <- function(
       extract_variable_array(model_sample$draws("Y_pred"), "Y_pred")
     y_pred_post <- y_pred_all[sample_index, 1, , ]
 
+    # $draws("delta"), NOT $draws(): the bare call materializes every one of the model's ~1270
+    # columns and cmdstanr then caches that array for the life of the fit, so it stays resident.
+    # Measured at 10.1 KB per stored draw, which is 61 MB at iter = 2000 x 3 chains but 607 MB at
+    # iter = 20000 -- and the escalation ladder reaches iter = 20000. Naming the variable brings it
+    # down to ~4 MB there. This is what put the study into the OOM killer at round 3.
     effects <-
-      extract_variable_array(model_sample$draws(), "delta")[, 1, ]
+      extract_variable_array(model_sample$draws("delta"), "delta")[, 1, ]
     effect_means <- colMeans(effects)
     effect_sds <- apply(effects, 2, sd)
 
     err_scale <- as.numeric(model_sample$draws("tau"))
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
 
-    cor_sq <- extract_variable_array(model_sample$draws(), "cor_sq")[, 1, ]
+    cor_sq <- extract_variable_array(model_sample$draws("cor_sq"), "cor_sq")[, 1, ]
     cor_sq_mean <- colMeans(cor_sq)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))

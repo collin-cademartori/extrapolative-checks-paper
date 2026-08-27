@@ -100,7 +100,17 @@ worker_progress <- function(label, logfile = "progress.log") {
 # ESS -- retained as a cheap tripwire, but it never bound in that run: the minimum ess_delta1 over
 # all 127 logged fits was 729, against the threshold of 400. Every escalation was triggered by
 # rhat_M (13), the divergence rate (4), or both (3).
-EX1_LADDER <- escalation_ladder(iter = c(8000L, 20000L), warm = c(2000L, 4000L))
+#
+# Round 3 is 12000, not the 20000 first tried. Two reasons, both from the run that was OOM-killed:
+#   * Memory. Even after the $draws() fix in sample_model.r, Y_latent and Y_pred are legitimately
+#     materialized per fit, so cost still scales with iterations: roughly 200 MB per fit at 20000
+#     against 120 MB at 12000, in every worker that reaches round 3, concurrently.
+#   * Diminishing returns. Round 2 at 8000 resolved 14 of the 17 escalated fits, and the three still
+#     due a round 3 sat at rhat_M 1.011, 1.016 and 1.058 -- the first two marginal. Nothing in that
+#     run suggests 20000 rather than 12000 is what separates them; 137 stat_weak (1.058) mixed
+#     slowly with treedepth saturating 27 times, which is a geometry problem that more iterations
+#     do not fix.
+EX1_LADDER <- escalation_ladder(iter = c(8000L, 12000L), warm = c(2000L, 3000L))
 ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
@@ -154,7 +164,15 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       nonstationary = TRUE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
-      iter = 500, iter_warm = 500,
+      # iter = 2000, not 500. At 500 the nonstationary fit degrades sharply and starts escalating:
+      # across the two long runs, rhat_M median went 1.002 -> 1.008 and its maximum 1.003 -> 1.027,
+      # ess_delta1 median fell 4919 -> 1285, and the share of fits over rhat_M = 1.01 went from
+      # 0 of 21 to 13 of 71 (18%). Those escalations are largely INVISIBLE in progress.log -- a
+      # round-2 fit is only logged if it trips a threshold, and nonstat's rhat_loadings is small
+      # enough that a clean refit leaves no trace -- so the cost showed up as memory pressure rather
+      # than as log lines. Paying 4x on the base fit is cheaper than refitting a fifth of them at
+      # 8000, and it restores the arm to the near-pristine behaviour it had at 2000.
+      iter = 2000, iter_warm = 500,
       n_chains = 3, pathfinder_init = TRUE
     ),
     seeds = fit_seeds[1, ], label = sprintf("unit %d nonstat", i), progress_log = progress_log, ladder = EX1_LADDER
