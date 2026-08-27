@@ -63,6 +63,52 @@ worker_progress <- function(label, logfile = "progress.log") {
   ), file = logfile, append = TRUE)
 }
 
+# Convergence escalation. A minority of stationary fits mix slowly in the loadings, and a few in the
+# latent means M as well; longer chains fix most of them, and a higher adapt_delta fixes the divergent
+# ones. Rather than post-processing or discarding those fits, refit them in place with progressively
+# more computation until they meet the criterion or ESCALATE_MAX rounds are spent.
+#
+# This is adaptive computation, not selection: the stopping rule is a function of convergence
+# diagnostics only. Under a correct sampler those are independent of the estimand, so escalating does
+# not bias delta. (Discarding non-converged fits instead WOULD be a selection procedure, because the
+# fits that struggle are the harder datasets, which are plausibly not exchangeable with the rest.)
+#
+# The criterion is rhat_M, not rhat_max: in ife_named the likelihood depends on (Lambda, Phi) only
+# through M = Lambda_Phi, so slow mixing confined to the loadings cannot affect delta, while anything
+# that could must show up in M. ess_delta1 guards the estimand directly.
+ESCALATE_MAX <- 3L          # rounds per fit, including the first
+ESCALATE_RHAT_M <- 1.01     # target for R-hat on the latent means
+ESCALATE_ESS <- 400         # minimum bulk ESS for delta_raw[1]
+ESCALATE_DIV_RATE <- 0.001  # divergences above this share of draws escalate adapt_delta
+
+fit_with_escalation <- function(args, seeds, label, progress_log) {
+  iter <- args$iter
+  ad <- args$ad
+  fit <- NULL
+  for (round in seq_len(ESCALATE_MAX)) {
+    a <- args
+    a$iter <- iter
+    a$ad <- ad
+    a$seed <- seeds[round]
+    a$log_file <- progress_log
+    a$log_label <- if (round == 1L) label else sprintf("%s [round %d: iter=%d ad=%.3f]", label, round, iter, ad)
+    fit <- do.call(sample_model, a)
+    sd_ <- fit$sampler_diag
+    n_draws <- iter * a$n_chains
+    slow <- (is.finite(sd_$rhat_M) && sd_$rhat_M > ESCALATE_RHAT_M) ||
+      (is.finite(sd_$ess_delta1) && sd_$ess_delta1 < ESCALATE_ESS)
+    divergent <- is.finite(sd_$n_div) && sd_$n_div > ESCALATE_DIV_RATE * n_draws
+    if ((!slow && !divergent) || round == ESCALATE_MAX) break
+    # Slow mixing buys iterations; divergences buy adapt_delta. Both can apply at once.
+    if (slow) iter <- iter * 2L
+    if (divergent) ad <- min(0.99, 1 - (1 - ad) / 4)
+  }
+  fit$n_rounds <- round
+  fit$final_iter <- iter
+  fit$final_ad <- ad
+  fit
+}
+
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
   N_units <- ncol(test_ys)
@@ -96,62 +142,68 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # be the wrong, inflating scale for integrated data.
   overall_scales_nonstat <- apply(test_ys, 2, function(y) sd(diff(y)))
 
-  # Draw all three Stan seeds up front, before any sample_model() call: cmdstanr's
-  # $sample() advances R's global RNG, so a seed drawn after a fit would not be
-  # reproducible. Invariant: never derive a seed after a fit.
-  fit_seeds <- sample.int(.Machine$integer.max, 3)
+  # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
+  # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
+  # after a fit. One seed per model PER ESCALATION ROUND, so a refit is reproducible too.
+  fit_seeds <- matrix(sample.int(.Machine$integer.max, 3L * ESCALATE_MAX), nrow = 3L)
 
   fits <- list()
 
-  fits$nonstat <- sample_model(
-    alpha_diag = 10,
-    overall_scales = overall_scales_nonstat, err_scale = 0,
-    err_scale_mean = 2,
-    err_scale_sd = 2,
-    data = test_ys,
-    autocor_a = 8, autocor_b = 2,
-    nonstationary = TRUE, num_treated = 5,
-    fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 2000, iter_warm = 500,
-    n_chains = 3, seed = fit_seeds[1], pathfinder_init = TRUE,
-    log_file = progress_log, log_label = sprintf("unit %d nonstat", i)
+  fits$nonstat <- fit_with_escalation(
+    list(
+      alpha_diag = 10,
+      overall_scales = overall_scales_nonstat, err_scale = 0,
+      err_scale_mean = 2,
+      err_scale_sd = 2,
+      data = test_ys,
+      autocor_a = 8, autocor_b = 2,
+      nonstationary = TRUE, num_treated = 5,
+      fit_scales = FALSE,
+      type = "posterior", K_latent = K_latent, ad = 0.8,
+      iter = 500, iter_warm = 500,
+      n_chains = 3, pathfinder_init = TRUE
+    ),
+    seeds = fit_seeds[1, ], label = sprintf("unit %d nonstat", i), progress_log = progress_log
   )
   fits$nonstat$name <- "nonstat"
 
-  fits$stat_weak <- sample_model(
-    alpha_diag = 10,
-    overall_scales = overall_scales_stat, err_scale = 0,
-    err_scale_mean = 0.1,
-    err_scale_sd = 0.1,
-    data = test_ys,
-    autocor_a = 97, autocor_b = 3,
-    nonstationary = FALSE, num_treated = 5,
-    fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 2000, iter_warm = 500,
-    n_chains = 3, seed = fit_seeds[2], pathfinder_init = TRUE,
-    log_file = progress_log, log_label = sprintf("unit %d stat_weak", i)
+  fits$stat_weak <- fit_with_escalation(
+    list(
+      alpha_diag = 20,
+      overall_scales = overall_scales_stat, err_scale = 0,
+      err_scale_mean = 0.1,
+      err_scale_sd = 0.1,
+      data = test_ys,
+      autocor_a = 97, autocor_b = 3,
+      nonstationary = FALSE, num_treated = 5,
+      fit_scales = FALSE,
+      type = "posterior", K_latent = K_latent + 1, ad = 0.8,
+      iter = 2000, iter_warm = 500,
+      n_chains = 3, pathfinder_init = TRUE
+    ),
+    seeds = fit_seeds[2, ], label = sprintf("unit %d stat_weak", i), progress_log = progress_log
   )
   fits$stat_weak$name <- "stat_weak"
 
-  fits$stat_strong <- sample_model(
-    alpha_diag = 10,
-    # Stronger error prior: the same truncated-normal form as stat_weak, with the location and
-    # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
-    # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
-    # tau under a tighter prior isolates the strength of the prior as the only difference.
-    overall_scales = overall_scales_stat, err_scale = 0,
-    err_scale_mean = 0.05,
-    err_scale_sd = 0.05,
-    data = test_ys,
-    autocor_a = 97, autocor_b = 3,
-    nonstationary = FALSE, num_treated = 5,
-    fit_scales = FALSE,
-    type = "posterior", K_latent = K_latent, ad = 0.8,
-    iter = 2000, iter_warm = 500,
-    n_chains = 3, seed = fit_seeds[3], pathfinder_init = TRUE,
-    log_file = progress_log, log_label = sprintf("unit %d stat_strong", i)
+  fits$stat_strong <- fit_with_escalation(
+    list(
+      alpha_diag = 20,
+      # Stronger error prior: the same truncated-normal form as stat_weak, with the location and
+      # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
+      # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
+      # tau under a tighter prior isolates the strength of the prior as the only difference.
+      overall_scales = overall_scales_stat, err_scale = 0,
+      err_scale_mean = 0.05,
+      err_scale_sd = 0.05,
+      data = test_ys,
+      autocor_a = 97, autocor_b = 3,
+      nonstationary = FALSE, num_treated = 5,
+      fit_scales = FALSE,
+      type = "posterior", K_latent = K_latent + 1, ad = 0.8,
+      iter = 2000, iter_warm = 500,
+      n_chains = 3, pathfinder_init = TRUE
+    ),
+    seeds = fit_seeds[3, ], label = sprintf("unit %d stat_strong", i), progress_log = progress_log
   )
   fits$stat_strong$name <- "stat_strong"
 
@@ -218,6 +270,10 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       res$n_div <- sdg$n_div
       res$lp_gap_max <- sdg$lp_gap_max
       res$ess_delta1 <- sdg$ess_delta1
+      # How much computation this fit needed: 1 = met the criterion on the first attempt.
+      res$n_rounds <- pfit$n_rounds
+      res$final_iter <- pfit$final_iter
+      res$final_ad <- pfit$final_ad
 
       # Overfitting of the treated unit's pre-treatment window -- the basis the counterfactual is
       # extrapolated from, and the only fit that feeds the delta estimate.
@@ -289,7 +345,8 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   )
 
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
-    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES")
+    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
+    "fit_with_escalation", "ESCALATE_MAX", "ESCALATE_RHAT_M", "ESCALATE_ESS", "ESCALATE_DIV_RATE")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
