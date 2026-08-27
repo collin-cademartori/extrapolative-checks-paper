@@ -12,6 +12,25 @@ library(forcats)
 source("../plotting.r")
 load("sim_study_ns.RData")
 
+# The checkpointing driver adds four bookkeeping columns (rep, unit, failed, error) that are not
+# per-arm statistics. They must come off before anything below: `error` is character, so the
+# abs(sim_study_stat) calls used to build the error and overfit frames fail outright on it, and all
+# four would otherwise be swept into the pivots that split names on "<model>_<statistic>".
+# Report failed reps first -- a study that lost reps to an error should not be summarized silently
+# as though it were complete.
+if ("failed" %in% names(sim_study_stat)) {
+  n_failed <- sum(sim_study_stat$failed, na.rm = TRUE)
+  cat(sprintf("\nReps loaded: %d", nrow(sim_study_stat)))
+  if (n_failed > 0) {
+    cat(sprintf("  --  %d FAILED, excluded from every summary below:\n", n_failed))
+    for (m in unique(sim_study_stat$error[which(sim_study_stat$failed)])) cat("    - ", m, "\n")
+    sim_study_stat <- sim_study_stat[!sim_study_stat$failed, , drop = FALSE]
+  } else {
+    cat("  (no failures)\n")
+  }
+}
+sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error")))
+
 # Numeric-only results (the standardized-error curves and overfit trade-off are
 # shown in the plots below): 99% posterior-predictive interval coverage -- at
 # least 99% for every model, so the check cannot rule out the misspecified model

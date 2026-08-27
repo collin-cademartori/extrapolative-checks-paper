@@ -6,6 +6,25 @@ library(tidyr)
 source("../plotting.r")
 load("sim_study_ints.RData")
 
+# The checkpointing driver adds bookkeeping columns (rep, failed, error) that are not per-arm
+# statistics. They must come off before anything below: `error` is character, so the
+# abs(sim_study_ints) calls used to build the error and overfit frames fail outright on it, and the
+# rest would otherwise be swept into the pivots that split names on "<model>_<statistic>".
+# `sim` and `num_comp` are NOT dropped -- they are the study's design factors and are grouped on.
+# Report failed tasks first, so a study that lost tasks is not summarized as though it were whole.
+if ("failed" %in% names(sim_study_ints)) {
+  n_failed <- sum(sim_study_ints$failed, na.rm = TRUE)
+  cat(sprintf("\nTasks loaded: %d", nrow(sim_study_ints)))
+  if (n_failed > 0) {
+    cat(sprintf("  --  %d FAILED, excluded from every summary below:\n", n_failed))
+    for (m in unique(sim_study_ints$error[which(sim_study_ints$failed)])) cat("    - ", m, "\n")
+    sim_study_ints <- sim_study_ints[!sim_study_ints$failed, , drop = FALSE]
+  } else {
+    cat("  (no failures)\n")
+  }
+}
+sim_study_ints <- sim_study_ints |> select(-any_of(c("rep", "failed", "error")))
+
 # 99% posterior-predictive interval coverage, averaged per condition. Both models
 # cover in excess of 99%, confirming the check cannot rule out the intercepts
 # model (paper Section 5). This is a purely numeric result -- the standardized
