@@ -103,6 +103,9 @@ the history shows, and the real footprint is smaller:
 
 ## Open questions
 
+See TESTING_QUEUE.md for the full list of pending tests and undecided questions; the two below are
+specific to the merge.
+
 - Does any scaffolding deserve promotion to `sampling-fixes` as a permanent record — e.g. the
   prior-predictive check behind the 2× RMS multiple — rather than living only in branch history?
 - What is `origin/stan-tweak`, and does anything in it still matter?
