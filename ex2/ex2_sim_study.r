@@ -214,9 +214,9 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       autocor_a = 90, autocor_b = 10,
       nonstationary = FALSE, num_treated = 5,
       include_factor_means = TRUE,
-      fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+      fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 500, iter_warm = 500, max_treedepth = 12,
+      iter = 500, iter_warm = 500,
       n_chains = 4
     ),
     seeds = fit_seeds[1, ],
@@ -235,9 +235,9 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       autocor_a = 90, autocor_b = 10,
       nonstationary = FALSE, num_treated = 5,
       include_ints = TRUE, int_scale = 3, int_loc = 4,
-      fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+      fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 500, iter_warm = 500, max_treedepth = 12,
+      iter = 500, iter_warm = 500,
       n_chains = 4
     ),
     seeds = fit_seeds[2, ],

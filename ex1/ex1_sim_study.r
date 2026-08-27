@@ -155,7 +155,8 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
   fits$nonstat <- fit_with_escalation(
     list(
-      alpha_diag = 10,
+      alpha_diag = 20,
+      N_units = N_units, T_times = T_times,
       overall_scales = overall_scales_nonstat, err_scale = 0,
       err_scale_mean = 2,
       err_scale_sd = 2,
@@ -182,6 +183,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   fits$stat_weak <- fit_with_escalation(
     list(
       alpha_diag = 20,
+      N_units = N_units, T_times = T_times,
       overall_scales = overall_scales_stat, err_scale = 0,
       err_scale_mean = 0.1,
       err_scale_sd = 0.1,
@@ -200,6 +202,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   fits$stat_strong <- fit_with_escalation(
     list(
       alpha_diag = 20,
+      N_units = N_units, T_times = T_times,
       # Stronger error prior: the same truncated-normal form as stat_weak, with the location and
       # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
       # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
