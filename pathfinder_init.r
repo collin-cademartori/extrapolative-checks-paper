@@ -67,5 +67,10 @@ pathfinder_inits <- function(mod, stat_data, n_chains, num_paths = NULL, draws =
   inits <- lapply(pick, function(i) draw_to_init(unlist(dd[i, pcols])))
   attr(inits, "n_dominant") <- length(dom)
   attr(inits, "n_pf_draws") <- nrow(dd)
+  # Pathfinder writes its own CSV to the temp directory (~4 MB here) and, like $sample(), cmdstanr
+  # only removes it on garbage collection -- which does not reliably happen inside a long study loop.
+  # The draws are already extracted into `dd`, so drop the file now. See sample_model.r for the
+  # full rationale.
+  try(unlink(pf$output_files(), force = TRUE), silent = TRUE)
   inits
 }

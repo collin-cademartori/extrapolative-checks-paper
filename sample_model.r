@@ -180,10 +180,14 @@ sample_model <- function(
       extract_variable_array(model_sample$draws("Y_latent"), "Y_latent")
     ys_latent <- ys_latent_all[sample_index, 1, , ]
 
-    return(list(
+    out <- list(
       ys = ys_prior,
       ys_latent = ys_latent
-    ))
+    )
+    # Drop the CmdStan CSVs now that everything is materialized in R. See the note at the
+    # matching call in the posterior branch below for why this cannot be left to the GC.
+    try(unlink(model_sample$output_files(), force = TRUE), silent = TRUE)
+    return(out)
   } else if (type == "posterior") {
     y_means_all <-
       extract_variable_array(model_sample$draws("Y_latent"), "Y_latent")
@@ -226,7 +230,7 @@ sample_model <- function(
     y_cor <- abs(cor(data)[1, 2:ncol(data)])
     cor_err_mean <- rowMeans(abs(y_cor - t(cor_sq)))
 
-    return(list(
+    out <- list(
       y_means = y_means_post,
       y_pred = y_pred_post,
       effect_means = effect_means,
@@ -240,6 +244,17 @@ sample_model <- function(
       sampler_diag = sampler_diag,
       draws = if (!is.null(return_draws)) model_sample$draws(return_draws) else NULL,
       sampler_draws = if (!is.null(return_draws)) model_sample$sampler_diagnostics() else NULL
-    ))
+    )
+    # Delete the CmdStan output CSVs explicitly. cmdstanr removes them only when the CmdStanFit
+    # object is garbage collected, and R's GC is driven by *heap* pressure -- which for one fit is a
+    # few MB, while the CSVs it leaves behind are 66 MB at iter = 2000 x 3 chains and 264 MB at
+    # iter = 8000 (this model writes 1272 columns, ~11 KB per stored draw). Nothing in R's heap
+    # therefore prompts the finalizers to run, so across a few hundred fits the temp filesystem
+    # accumulates tens of GB and the study dies on a disk quota. By this point every quantity we
+    # return has already been read into R (cmdstanr caches draws after the first read), so the files
+    # are safe to drop. Must come AFTER `out` is built: the $draws()/$sampler_diagnostics() calls
+    # above are the last readers.
+    try(unlink(model_sample$output_files(), force = TRUE), silent = TRUE)
+    return(out)
   }
 }
