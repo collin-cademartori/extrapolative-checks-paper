@@ -258,3 +258,77 @@ sample_model <- function(
     return(out)
   }
 }
+
+
+# ---------------------------------------------------------------------------------------------
+# Convergence escalation, shared by both simulation studies.
+#
+# A minority of fits mix slowly in the loadings, and a few in the latent means M as well; longer
+# chains fix most of them, and a higher adapt_delta fixes the divergent ones. Rather than
+# post-processing or discarding those fits, refit them in place with progressively more computation
+# until they meet the criterion or the ladder is spent.
+#
+# This is adaptive computation, not selection: the stopping rule is a function of convergence
+# diagnostics only. Under a correct sampler those are independent of the estimand, so escalating does
+# not bias delta. (Discarding non-converged fits instead WOULD be a selection procedure, because the
+# fits that struggle are the harder datasets, which are plausibly not exchangeable with the rest.)
+# Note the flip side, worth stating wherever the diagnostic distribution is reported: because a fit
+# stops as soon as it passes, the RECORDED R-hat distribution is stopped-on-success and so reads low.
+# Report the ladder (n_rounds) alongside it rather than the final R-hats alone.
+#
+# The criterion is rhat_M, not rhat_max: the likelihood depends on (Lambda, Phi) only through
+# M = Lambda_Phi, so slow mixing confined to the loadings cannot affect delta, while anything that
+# could must show up in M. This holds for BOTH examples -- with unit intercepts and factor means the
+# intercept enters Y_means additively (gamma[n] + sigma[n] * Lambda_Phi[:,n]) and the factor means
+# fold into Phi, so M remains the sufficient statistic; the conditioning set merely grows to include
+# gamma and omega_sq, which rhat_estimands already covers. ess_delta1 guards the estimand directly.
+#
+# The ladder itself is per-example, since the two studies have different base configurations. Build
+# one with escalation_ladder() and pass it in.
+escalation_ladder <- function(iter, warm, ad_floor = 0.95, rhat_M = 1.01,
+                              ess = 400, div_rate = 0.001) {
+  stopifnot(length(iter) == length(warm), length(iter) >= 1)
+  list(iter = as.integer(iter), warm = as.integer(warm), ad_floor = ad_floor,
+       rhat_M = rhat_M, ess = ess, div_rate = div_rate,
+       max_rounds = length(iter) + 1L)   # rounds INCLUDING the unescalated first attempt
+}
+
+fit_with_escalation <- function(args, seeds, label, progress_log, ladder) {
+  iter <- args$iter
+  warm <- if (is.null(args$iter_warm)) args$iter else args$iter_warm
+  ad <- args$ad
+  # Rungs of ladder$iter already spent. Tracked separately from `round` so that a round bought
+  # purely by divergences does not consume a rung of the iteration ladder.
+  it_level <- 0L
+  fit <- NULL
+  for (round in seq_len(ladder$max_rounds)) {
+    a <- args
+    a$iter <- iter
+    a$iter_warm <- warm
+    a$ad <- ad
+    a$seed <- seeds[round]
+    a$log_file <- progress_log
+    a$log_label <- if (round == 1L) label else
+      sprintf("%s [round %d: iter=%d warm=%d ad=%.3f]", label, round, iter, warm, ad)
+    fit <- do.call(sample_model, a)
+    sd_ <- fit$sampler_diag
+    n_draws <- iter * a$n_chains
+    slow <- (is.finite(sd_$rhat_M) && sd_$rhat_M > ladder$rhat_M) ||
+      (is.finite(sd_$ess_delta1) && sd_$ess_delta1 < ladder$ess)
+    divergent <- is.finite(sd_$n_div) && sd_$n_div > ladder$div_rate * n_draws
+    if ((!slow && !divergent) || round == ladder$max_rounds) break
+    # Slow mixing buys iterations and matching warmup; divergences buy adapt_delta on top of the
+    # floor that every escalated round gets regardless.
+    if (slow && it_level < length(ladder$iter)) {
+      it_level <- it_level + 1L
+      iter <- ladder$iter[it_level]
+      warm <- ladder$warm[it_level]
+    }
+    ad <- max(if (divergent) min(0.99, 1 - (1 - ad) / 4) else ad, ladder$ad_floor)
+  }
+  fit$n_rounds <- round
+  fit$final_iter <- iter
+  fit$final_warm <- warm
+  fit$final_ad <- ad
+  fit
+}

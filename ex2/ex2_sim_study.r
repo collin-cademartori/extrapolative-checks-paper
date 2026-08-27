@@ -58,6 +58,23 @@ worker_progress <- function(label, logfile = "progress.log") {
   ), file = logfile, append = TRUE)
 }
 
+# Convergence escalation ladder for ex2. The mechanism is shared with ex1 and lives in
+# sample_model.r (escalation_ladder / fit_with_escalation), including the argument that this is
+# adaptive computation rather than selection and why rhat_M is the criterion. Only the rungs are
+# per-example.
+#
+# ex2's base configuration is iter = 500 over 4 chains (2000 draws), against ex1's 2000 over 3
+# (6000). The rungs below are ex1's multipliers rescaled to that base -- 4x the draws at round 2 and
+# 10x at round 3 -- rather than ex1's absolute iteration counts, which would be a 16x/40x jump here.
+# Warmup escalates in step, as in ex1, so a long round is not run off a short adaptation.
+#
+# The thresholds (rhat_M > 1.01, ess_delta1 < 400, divergence rate > 0.1%) and the adapt_delta floor
+# of 0.95 are inherited unchanged: those were calibrated on ex1's sampler behaviour, not on its data,
+# and adapt_delta 0.95 cleared divergences in 8 of 8 ex1 fits where it was tried. They should be
+# revisited once ex2 has produced a run's worth of its own diagnostics.
+EX2_LADDER <- escalation_ladder(iter = c(2000L, 5000L), warm = c(1500L, 3000L))
+ESCALATE_MAX <- EX2_LADDER$max_rounds   # seeds are drawn one per fit per round
+
 # Data-driven anchor ordering for the triangular (Cholesky) loadings. Keeps the treated
 # unit (column 1) first, then greedily picks the untreated columns most orthogonal to
 # those already chosen so the leading K x K loading block is
@@ -175,46 +192,57 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
   perm <- anchor_order(test_ys, K_latent)
   fit_ys <- test_ys[, perm]
 
-  # Draw both Stan seeds up front, before any sample_model() call: cmdstanr's
+  # Draw every Stan seed up front, before any sample_model() call: cmdstanr's
   # $sample() advances R's global RNG, so a seed drawn after a fit would not be
-  # reproducible. Invariant: never derive a seed after a fit.
-  fit_seeds <- sample.int(.Machine$integer.max, 2)
+  # reproducible. Invariant: never derive a seed after a fit. One seed per model PER ESCALATION
+  # ROUND, so a refit is reproducible too.
+  fit_seeds <- matrix(sample.int(.Machine$integer.max, 2L * ESCALATE_MAX), nrow = 2L)
 
   fits <- list()
 
+  # The overall_scales differ between the two fits by design and are deliberately NOT given ex1's
+  # 2 x RMS multiple: ex1's stationary fits have neither intercepts nor factor means, so the level of
+  # each series has to be produced by the factors themselves and their realised amplitude has to be
+  # corrected for; both fits here have an explicit level mechanism, so the correction does not apply.
   overall_scales <- apply(fit_ys, 2, \(x) sqrt(mean(x ^ 2)))
-  fits$no_ints <- sample_model(
-    N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
-    overall_scales = overall_scales,
-    err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
-    data = fit_ys,
-    autocor_a = 90, autocor_b = 10,
-    nonstationary = FALSE, num_treated = 5,
-    include_factor_means = TRUE,
-    fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
-    type = "posterior", quiet = TRUE, ad = 0.8,
-    iter = 500, iter_warm = 500, max_treedepth = 12,
-    n_chains = 4, seed = fit_seeds[1],
-    log_file = progress_log,
-    log_label = sprintf("sim %.2g num_comp %d rep %d no_ints", sim, N_comp, rep_i)
+  fits$no_ints <- fit_with_escalation(
+    list(
+      N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
+      overall_scales = overall_scales,
+      err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+      data = fit_ys,
+      autocor_a = 90, autocor_b = 10,
+      nonstationary = FALSE, num_treated = 5,
+      include_factor_means = TRUE,
+      fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+      type = "posterior", quiet = TRUE, ad = 0.8,
+      iter = 500, iter_warm = 500, max_treedepth = 12,
+      n_chains = 4
+    ),
+    seeds = fit_seeds[1, ],
+    label = sprintf("sim %.2g num_comp %d rep %d no_ints", sim, N_comp, rep_i),
+    progress_log = progress_log, ladder = EX2_LADDER
   )
   fits$no_ints$name <- "no_ints"
 
   overall_sds <- apply(fit_ys, 2, sd)
-  fits$ints <- sample_model(
-    N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
-    overall_scales = overall_sds,
-    err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
-    data = fit_ys,
-    autocor_a = 90, autocor_b = 10,
-    nonstationary = FALSE, num_treated = 5,
-    include_ints = TRUE, int_scale = 3, int_loc = 4,
-    fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
-    type = "posterior", quiet = TRUE, ad = 0.8,
-    iter = 500, iter_warm = 500, max_treedepth = 12,
-    n_chains = 4, seed = fit_seeds[2],
-    log_file = progress_log,
-    log_label = sprintf("sim %.2g num_comp %d rep %d ints", sim, N_comp, rep_i)
+  fits$ints <- fit_with_escalation(
+    list(
+      N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
+      overall_scales = overall_sds,
+      err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+      data = fit_ys,
+      autocor_a = 90, autocor_b = 10,
+      nonstationary = FALSE, num_treated = 5,
+      include_ints = TRUE, int_scale = 3, int_loc = 4,
+      fit_scales = 0, alpha_diag = 0, pathfinder_init = TRUE,
+      type = "posterior", quiet = TRUE, ad = 0.8,
+      iter = 500, iter_warm = 500, max_treedepth = 12,
+      n_chains = 4
+    ),
+    seeds = fit_seeds[2, ],
+    label = sprintf("sim %.2g num_comp %d rep %d ints", sim, N_comp, rep_i),
+    progress_log = progress_log, ladder = EX2_LADDER
   )
   fits$ints$name <- "ints"
 
@@ -262,6 +290,33 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       pred_mad <- pfit$mean_abs_diffs
       res$pred_mad <- pred_mad
 
+      # Convergence diagnostics recorded for EVERY fit, as in ex1. progress.log only keeps fits that
+      # trip a threshold, so on its own it cannot show that rhat_M stays reasonable across the run --
+      # the clean majority would be invisible, and no sensitivity analysis would be possible.
+      #
+      # rhat_M is the one that certifies delta. The conditional-independence argument carries over to
+      # ex2 unchanged: with unit intercepts the intercept enters additively
+      # (Y_means_0[:,n] = gamma[n] + sigma[n] * Lambda_Phi[:,n]) and with factor means those fold
+      # into Phi, so M = Lambda_Phi remains the sufficient statistic through which the likelihood
+      # sees (Lambda, Phi). The conditioning set grows to include gamma and omega_sq, both of which
+      # rhat_estimands already covers.
+      sdg <- pfit$sampler_diag
+      res$rhat_max <- sdg$rhat_max
+      res$rhat_M <- sdg$rhat_M
+      res$rhat_estimands <- sdg$rhat_estimands
+      res$rhat_loadings <- sdg$rhat_loadings
+      res$rhat_cor_sq <- sdg$rhat_cor_sq
+      res$n_div <- sdg$n_div
+      res$n_tree <- sdg$n_tree
+      res$ebfmi_min <- sdg$ebfmi_min
+      res$lp_gap_max <- sdg$lp_gap_max
+      res$ess_delta1 <- sdg$ess_delta1
+      # How much computation this fit needed: 1 = met the criterion on the first attempt.
+      res$n_rounds <- pfit$n_rounds
+      res$final_iter <- pfit$final_iter
+      res$final_warm <- pfit$final_warm
+      res$final_ad <- pfit$final_ad
+
       return(res)
     }) |>
     list_flatten()
@@ -292,9 +347,10 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
     "run_sim_intercepts", "sim_model_intercepts", "ruv",
     "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits",
     "anchor_order", "unpermute_untreated",
-    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES"
+    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
+    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX2_LADDER"
   )
-  exp_packages <- c("cmdstanr", "posterior", "ggplot2")
+  exp_packages <- c("cmdstanr", "posterior", "ggplot2", "dplyr")
 
   # Flatten the sim x N_comp x rep design into a single (non-nested) foreach, so
   # %dorng% gives each task a reproducible RNG stream invariant to worker count.
@@ -316,26 +372,70 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
   # Absolute log path, so workers write it where the master expects regardless of
   # their working directory.
   progress_log <- file.path(getwd(), "progress.log")
-  cat("", file = progress_log) # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
+
+  # Per-task checkpoints, as in ex1. A single failing task used to abort the whole study via %dorng%
+  # and take every completed task with it. Each task now writes its own row as soon as it finishes,
+  # and a rerun picks up the rows that already exist instead of recomputing them. This matters more
+  # here than in ex1: the grid is reps x N_comps x sims tasks, each with two fits.
+  # The directory is keyed to the study seed and the grid size, so changing either starts a fresh
+  # set rather than silently reusing rows from a different configuration; delete it by hand to force
+  # a full recompute under the same configuration.
+  ckpt_dir <- file.path(getwd(), sprintf("ckpt_ints_seed%d_n%d", seed, nrow(grid)))
+  dir.create(ckpt_dir, showWarnings = FALSE)
+  n_resume <- length(list.files(ckpt_dir, pattern = "^task_.*\\.rds$"))
+  if (n_resume > 0) {
+    cat(sprintf("  resuming: %d of %d tasks already checkpointed in %s\n\n",
+      n_resume, nrow(grid), basename(ckpt_dir)))
+  } else {
+    cat("", file = progress_log) # truncate: fresh per-worker progress log per run
+  }
 
   study_res <-
     foreach(
-      rep_i = grid$rep, N_comp = grid$N_comp, sim = grid$sim,
-      .combine = "rbind", .export = exp_vars, .packages = exp_packages,
+      rep_i = grid$rep, N_comp = grid$N_comp, sim = grid$sim, task_i = seq_len(nrow(grid)),
+      # bind_rows rather than rbind: a failed task contributes a short row, and rbind would error on
+      # the column mismatch instead of recording the failure.
+      .combine = function(...) dplyr::bind_rows(...),
+      .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      unit_res <- run_sim_intercepts(
-        N_comp = N_comp, sim = sim, K_latent = K_latent,
-        rep_i = rep_i, plot_iters = plot_iters, progress_log = progress_log
-      )
-      worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
-      as.data.frame(c(unit_res, list(sim = sim, num_comp = N_comp)))
+      # The full condition triple goes in the filename, so a checkpoint can never be reused for a
+      # different cell of the grid even if the grid ordering were to change.
+      ckpt_file <- file.path(ckpt_dir,
+        sprintf("task_%05d_sim%.2g_nc%d_rep%04d.rds", task_i, sim, N_comp, rep_i))
+      if (file.exists(ckpt_file)) {
+        readRDS(ckpt_file)
+      } else {
+        unit_res <- tryCatch(
+          as.data.frame(c(
+            run_sim_intercepts(
+              N_comp = N_comp, sim = sim, K_latent = K_latent,
+              rep_i = rep_i, plot_iters = plot_iters, progress_log = progress_log
+            ),
+            list(sim = sim, num_comp = N_comp)
+          )),
+          error = function(e) {
+            cat(sprintf("[%s] sim %.2g num_comp %d rep %d FAILED: %s\n",
+              format(Sys.time(), "%H:%M"), sim, N_comp, rep_i, conditionMessage(e)),
+              file = progress_log, append = TRUE)
+            data.frame(sim = sim, num_comp = N_comp, error = conditionMessage(e))
+          }
+        )
+        unit_res$rep <- rep_i
+        if (is.null(unit_res$error)) unit_res$error <- NA_character_
+        unit_res$failed <- !is.na(unit_res$error)
+        saveRDS(unit_res, ckpt_file)
+        worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
+        unit_res
+      }
     }
 
+  n_failed <- sum(study_res$failed, na.rm = TRUE)
   cat(sprintf(
-    "--- study complete: %d tasks in %.1f min ---\n",
-    nrow(grid), as.numeric(difftime(Sys.time(), t0, units = "mins"))
+    "--- study complete: %d tasks in %.1f min%s ---\n",
+    nrow(grid), as.numeric(difftime(Sys.time(), t0, units = "mins")),
+    if (n_failed > 0) sprintf("; %d FAILED (see the `error` column and progress.log)", n_failed) else ""
   ))
 
   return(study_res)

@@ -63,109 +63,45 @@ worker_progress <- function(label, logfile = "progress.log") {
   ), file = logfile, append = TRUE)
 }
 
-# Convergence escalation. A minority of stationary fits mix slowly in the loadings, and a few in the
-# latent means M as well; longer chains fix most of them, and a higher adapt_delta fixes the divergent
-# ones. Rather than post-processing or discarding those fits, refit them in place with progressively
-# more computation until they meet the criterion or ESCALATE_MAX rounds are spent.
+# Convergence escalation ladder for ex1. The mechanism lives in sample_model.r
+# (escalation_ladder / fit_with_escalation, with the argument that it is adaptive computation rather
+# than selection, and why rhat_M is the criterion); the rungs below are ex1-specific and each is set
+# by measurement from the first overnight 200-rep run.
 #
-# This is adaptive computation, not selection: the stopping rule is a function of convergence
-# diagnostics only. Under a correct sampler those are independent of the estimand, so escalating does
-# not bias delta. (Discarding non-converged fits instead WOULD be a selection procedure, because the
-# fits that struggle are the harder datasets, which are plausibly not exchangeable with the rest.)
+# ITERATIONS -- round 2 jumps straight to 8000 rather than doubling. That run's ladder was
+# 2000 -> 4000 -> 8000, and the intermediate 4000-iteration rung improved rhat_M in only 12 of 21
+# trajectories while making it WORSE in 6, twice badly (57 stat_weak 1.011 -> 1.065, 314 stat_weak
+# 1.013 -> 1.052). That is not sampler noise: each round draws a FRESH seed, so a marginal case
+# sitting near the 1.01 threshold gets re-rolled rather than continued. Dropping the marginal rung
+# removes the re-roll and spends the compute where it demonstrably paid -- every R2 -> R3 step in
+# that run improved rhat_M (8 of 8, median 1.017 -> 1.005).
 #
-# The criterion is rhat_M, not rhat_max: in ife_named the likelihood depends on (Lambda, Phi) only
-# through M = Lambda_Phi, so slow mixing confined to the loadings cannot affect delta, while anything
-# that could must show up in M. ess_delta1 guards the estimand directly.
-ESCALATE_RHAT_M <- 1.01     # target for R-hat on the latent means
-ESCALATE_ESS <- 400         # minimum bulk ESS for delta_raw[1]
-ESCALATE_DIV_RATE <- 0.001  # divergences above this share of draws escalate adapt_delta
-
-# Sampling length for escalated rounds 2 and 3. Round 2 jumps straight to 8000 rather than doubling.
-# In the first overnight run the ladder was 2000 -> 4000 -> 8000, and the intermediate 4000-iteration
-# rung improved rhat_M in only 12 of 21 trajectories while making it WORSE in 6, twice badly
-# (57 stat_weak 1.011 -> 1.065, 314 stat_weak 1.013 -> 1.052). That is not sampler noise: each round
-# draws a FRESH seed, so a marginal case sitting near the 1.01 threshold gets re-rolled rather than
-# continued. Dropping the marginal rung removes the re-roll and spends the compute where it
-# demonstrably paid -- every R2 -> R3 step in that run improved rhat_M (8 of 8, median 1.017 -> 1.005).
-ESCALATE_ITER <- c(8000L, 20000L)
-
-# Warmup escalates in step with sampling length. The base configuration warms up for 500 iterations
-# and samples for 2000; leaving warmup at 500 while sampling ran to 8000 or 20000 would draw tens of
-# thousands of iterations from a metric and step size adapted on a quarter of a short run.
-#
-# What it does buy is rhat_M, which is what the escalation is keyed on. Warming up longer at FIXED
-# sampling length (iter = 2000) was measured on six of the problem datasets, and in all three
-# stat_strong cases -- the worst arm -- rhat_M improved monotonically with warmup alone:
+# WARMUP -- escalates in step. The base configuration warms up for 500 and samples for 2000; leaving
+# warmup at 500 while sampling ran to 20000 would draw tens of thousands of iterations from a metric
+# adapted on a quarter of a short run. Warming up longer at FIXED sampling length was measured on six
+# of the problem datasets, and in all three stat_strong cases -- the worst arm -- rhat_M improved
+# monotonically from warmup alone:
 #   265 stat_strong  1.092 -> 1.038 -> 1.038   (warm 500 -> 2000 -> 4000)
 #   278 stat_strong  1.017 -> 1.010 -> 1.004
 #   120 stat_strong  1.014 ->   .   -> 1.009
 # with ess_delta1 moving in step (120: 454 -> 734, 278: 1741 -> 1986, 187 stat_weak: 2152 -> 2678).
-# The stat_weak cases were flat, but were already clean. One caveat that the adapt_delta floor below
-# covers: 265 stat_strong picked up 8 divergences at warm = 4000 having had none at 500 or 2000, so
-# longer warmup is not unconditionally benign.
+# The stat_weak cases were flat, but were already clean. Do NOT expect it to move E-BFMI: the same
+# test refuted that (265 stat_strong 0.27 -> 0.30 -> 0.27, 278 stat_strong 0.47 -> 0.51 -> 0.50,
+# 120 stat_strong 0.33 -> 0.33, 187 stat_weak 0.49 -> 0.44 -> 0.54, 203 stat_weak 0.40 -> 0.43 ->
+# 0.39). See the note on ebfmi_min below.
 #
-# Do NOT expect this to move E-BFMI. It was introduced on the hypothesis that it would -- E-BFMI is a
-# function of the adapted metric and step size, both frozen at the end of warmup, so it cannot respond
-# to sampling length, and in the overnight log it never did (278 stat_weak sat at 0.19 -> 0.20 -> 0.20
-# across iter 2000 -> 4000 -> 8000 with warmup pinned at 500). The same six-dataset test refuted the
-# warmup version of that hypothesis too: 265 stat_strong 0.27 -> 0.30 -> 0.27, 278 stat_strong
-# 0.47 -> 0.51 -> 0.50, 120 stat_strong 0.33 -> 0.33, 187 stat_weak 0.49 -> 0.44 -> 0.54,
-# 203 stat_weak 0.40 -> 0.43 -> 0.39. See the note on ebfmi_min below.
-#
-# That test also found E-BFMI to be far less a property of the DATASET than it looks: 278 stat_weak
-# scored 0.19 in the study and 0.52 here under an identical configuration differing only in seed. It
-# is adaptation luck more than a fixed feature of the posterior. See the note on ebfmi_min below.
-ESCALATE_WARM <- c(2000L, 4000L)
-
-# Floor on adapt_delta for any escalated round, whatever triggered the escalation. Raising
+# ADAPT_DELTA FLOOR -- every escalated round runs at >= 0.95 whatever triggered it. Raising
 # adapt_delta to 0.95 drove divergences to exactly ZERO in 8 of the 8 fits where it was tried
-# (initial rates 0.12%-0.63%), whereas the fits that bought iterations at adapt_delta = 0.8 saw
+# (initial rates 0.12%-0.63%), whereas fits that bought iterations at adapt_delta = 0.8 saw
 # divergences GROW with chain length (278 stat_weak 2 -> 8 -> 166, i.e. 0.03% -> 0.69%; 183 stat_weak
-# 0 -> 0 -> 34). If a round is expensive enough to be worth running, it is worth running at a step
-# size that does not squander it.
-ESCALATE_AD_FLOOR <- 0.95
-
-ESCALATE_MAX <- length(ESCALATE_ITER) + 1L   # rounds per fit, including the first
-
-fit_with_escalation <- function(args, seeds, label, progress_log) {
-  iter <- args$iter
-  warm <- if (is.null(args$iter_warm)) args$iter else args$iter_warm
-  ad <- args$ad
-  # Rungs of ESCALATE_ITER already spent. Tracked separately from `round` so that a round bought
-  # purely by divergences does not silently consume a rung of the iteration ladder.
-  it_level <- 0L
-  fit <- NULL
-  for (round in seq_len(ESCALATE_MAX)) {
-    a <- args
-    a$iter <- iter
-    a$iter_warm <- warm
-    a$ad <- ad
-    a$seed <- seeds[round]
-    a$log_file <- progress_log
-    a$log_label <- if (round == 1L) label else
-      sprintf("%s [round %d: iter=%d warm=%d ad=%.3f]", label, round, iter, warm, ad)
-    fit <- do.call(sample_model, a)
-    sd_ <- fit$sampler_diag
-    n_draws <- iter * a$n_chains
-    slow <- (is.finite(sd_$rhat_M) && sd_$rhat_M > ESCALATE_RHAT_M) ||
-      (is.finite(sd_$ess_delta1) && sd_$ess_delta1 < ESCALATE_ESS)
-    divergent <- is.finite(sd_$n_div) && sd_$n_div > ESCALATE_DIV_RATE * n_draws
-    if ((!slow && !divergent) || round == ESCALATE_MAX) break
-    # Slow mixing buys iterations and matching warmup; divergences buy adapt_delta on top of the
-    # floor that every escalated round gets regardless.
-    if (slow && it_level < length(ESCALATE_ITER)) {
-      it_level <- it_level + 1L
-      iter <- ESCALATE_ITER[it_level]
-      warm <- ESCALATE_WARM[it_level]
-    }
-    ad <- max(if (divergent) min(0.99, 1 - (1 - ad) / 4) else ad, ESCALATE_AD_FLOOR)
-  }
-  fit$n_rounds <- round
-  fit$final_iter <- iter
-  fit$final_warm <- warm
-  fit$final_ad <- ad
-  fit
-}
+# 0 -> 0 -> 34). One caveat it also absorbs: 265 stat_strong picked up 8 divergences at warm = 4000
+# having had none at 500 or 2000, so longer warmup is not unconditionally benign.
+#
+# ESS -- retained as a cheap tripwire, but it never bound in that run: the minimum ess_delta1 over
+# all 127 logged fits was 729, against the threshold of 400. Every escalation was triggered by
+# rhat_M (13), the divergence rate (4), or both (3).
+EX1_LADDER <- escalation_ladder(iter = c(8000L, 20000L), warm = c(2000L, 4000L))
+ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
@@ -221,7 +157,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       iter = 500, iter_warm = 500,
       n_chains = 3, pathfinder_init = TRUE
     ),
-    seeds = fit_seeds[1, ], label = sprintf("unit %d nonstat", i), progress_log = progress_log
+    seeds = fit_seeds[1, ], label = sprintf("unit %d nonstat", i), progress_log = progress_log, ladder = EX1_LADDER
   )
   fits$nonstat$name <- "nonstat"
 
@@ -239,7 +175,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       iter = 2000, iter_warm = 500,
       n_chains = 3, pathfinder_init = TRUE
     ),
-    seeds = fit_seeds[2, ], label = sprintf("unit %d stat_weak", i), progress_log = progress_log
+    seeds = fit_seeds[2, ], label = sprintf("unit %d stat_weak", i), progress_log = progress_log, ladder = EX1_LADDER
   )
   fits$stat_weak$name <- "stat_weak"
 
@@ -261,7 +197,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       iter = 2000, iter_warm = 500,
       n_chains = 3, pathfinder_init = TRUE
     ),
-    seeds = fit_seeds[3, ], label = sprintf("unit %d stat_strong", i), progress_log = progress_log
+    seeds = fit_seeds[3, ], label = sprintf("unit %d stat_strong", i), progress_log = progress_log, ladder = EX1_LADDER
   )
   fits$stat_strong$name <- "stat_strong"
 
@@ -417,8 +353,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
 
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
-    "fit_with_escalation", "ESCALATE_MAX", "ESCALATE_RHAT_M", "ESCALATE_ESS", "ESCALATE_DIV_RATE",
-    "ESCALATE_ITER", "ESCALATE_WARM", "ESCALATE_AD_FLOOR")
+    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
