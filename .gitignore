@@ -10,3 +10,4 @@ TODO.md
 ife_named_*
 !ife_named_*.stan
 progress.log
+ckpt_ns_*/

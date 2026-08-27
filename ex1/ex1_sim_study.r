@@ -76,22 +76,64 @@ worker_progress <- function(label, logfile = "progress.log") {
 # The criterion is rhat_M, not rhat_max: in ife_named the likelihood depends on (Lambda, Phi) only
 # through M = Lambda_Phi, so slow mixing confined to the loadings cannot affect delta, while anything
 # that could must show up in M. ess_delta1 guards the estimand directly.
-ESCALATE_MAX <- 3L          # rounds per fit, including the first
 ESCALATE_RHAT_M <- 1.01     # target for R-hat on the latent means
 ESCALATE_ESS <- 400         # minimum bulk ESS for delta_raw[1]
 ESCALATE_DIV_RATE <- 0.001  # divergences above this share of draws escalate adapt_delta
 
+# Sampling length for escalated rounds 2 and 3. Round 2 jumps straight to 8000 rather than doubling.
+# In the first overnight run the ladder was 2000 -> 4000 -> 8000, and the intermediate 4000-iteration
+# rung improved rhat_M in only 12 of 21 trajectories while making it WORSE in 6, twice badly
+# (57 stat_weak 1.011 -> 1.065, 314 stat_weak 1.013 -> 1.052). That is not sampler noise: each round
+# draws a FRESH seed, so a marginal case sitting near the 1.01 threshold gets re-rolled rather than
+# continued. Dropping the marginal rung removes the re-roll and spends the compute where it
+# demonstrably paid -- every R2 -> R3 step in that run improved rhat_M (8 of 8, median 1.017 -> 1.005).
+ESCALATE_ITER <- c(8000L, 20000L)
+
+# Warmup escalates in step with sampling length. The base configuration warms up for 500 iterations
+# and samples for 2000; leaving warmup at 500 while sampling ran to 8000 or 20000 would draw tens of
+# thousands of iterations from a metric and step size adapted on a quarter of a short run.
+#
+# Do NOT expect this to move E-BFMI. It was introduced on the hypothesis that it would -- E-BFMI is a
+# function of the adapted metric and step size, both frozen at the end of warmup, so it cannot respond
+# to sampling length, and in the overnight log it never did (278 stat_weak sat at 0.19 -> 0.20 -> 0.20
+# across iter 2000 -> 4000 -> 8000 with warmup pinned at 500). But warming up longer at fixed sampling
+# length was then measured directly on four of the low-E-BFMI datasets, and E-BFMI barely moved
+# (278 stat_weak 0.52 -> 0.59, 187 0.49 -> 0.44 -> 0.54, 203 0.40 -> 0.43 -> 0.39, 265 stat_strong
+# 0.27 -> 0.30). Those same runs did show rhat_M improving on the worst case (265 stat_strong
+# 1.092 -> 1.038 from warmup alone), which is the reason to keep the escalation.
+#
+# That test also found E-BFMI to be far less a property of the DATASET than it looks: 278 stat_weak
+# scored 0.19 in the study and 0.52 here under an identical configuration differing only in seed. It
+# is adaptation luck more than a fixed feature of the posterior. See the note on ebfmi_min below.
+ESCALATE_WARM <- c(2000L, 4000L)
+
+# Floor on adapt_delta for any escalated round, whatever triggered the escalation. Raising
+# adapt_delta to 0.95 drove divergences to exactly ZERO in 8 of the 8 fits where it was tried
+# (initial rates 0.12%-0.63%), whereas the fits that bought iterations at adapt_delta = 0.8 saw
+# divergences GROW with chain length (278 stat_weak 2 -> 8 -> 166, i.e. 0.03% -> 0.69%; 183 stat_weak
+# 0 -> 0 -> 34). If a round is expensive enough to be worth running, it is worth running at a step
+# size that does not squander it.
+ESCALATE_AD_FLOOR <- 0.95
+
+ESCALATE_MAX <- length(ESCALATE_ITER) + 1L   # rounds per fit, including the first
+
 fit_with_escalation <- function(args, seeds, label, progress_log) {
   iter <- args$iter
+  warm <- if (is.null(args$iter_warm)) args$iter else args$iter_warm
   ad <- args$ad
+  # Rungs of ESCALATE_ITER already spent. Tracked separately from `round` so that a round bought
+  # purely by divergences does not silently consume a rung of the iteration ladder.
+  it_level <- 0L
   fit <- NULL
   for (round in seq_len(ESCALATE_MAX)) {
     a <- args
     a$iter <- iter
+    a$iter_warm <- warm
     a$ad <- ad
     a$seed <- seeds[round]
     a$log_file <- progress_log
-    a$log_label <- if (round == 1L) label else sprintf("%s [round %d: iter=%d ad=%.3f]", label, round, iter, ad)
+    a$log_label <- if (round == 1L) label else
+      sprintf("%s [round %d: iter=%d warm=%d ad=%.3f]", label, round, iter, warm, ad)
     fit <- do.call(sample_model, a)
     sd_ <- fit$sampler_diag
     n_draws <- iter * a$n_chains
@@ -99,12 +141,18 @@ fit_with_escalation <- function(args, seeds, label, progress_log) {
       (is.finite(sd_$ess_delta1) && sd_$ess_delta1 < ESCALATE_ESS)
     divergent <- is.finite(sd_$n_div) && sd_$n_div > ESCALATE_DIV_RATE * n_draws
     if ((!slow && !divergent) || round == ESCALATE_MAX) break
-    # Slow mixing buys iterations; divergences buy adapt_delta. Both can apply at once.
-    if (slow) iter <- iter * 2L
-    if (divergent) ad <- min(0.99, 1 - (1 - ad) / 4)
+    # Slow mixing buys iterations and matching warmup; divergences buy adapt_delta on top of the
+    # floor that every escalated round gets regardless.
+    if (slow && it_level < length(ESCALATE_ITER)) {
+      it_level <- it_level + 1L
+      iter <- ESCALATE_ITER[it_level]
+      warm <- ESCALATE_WARM[it_level]
+    }
+    ad <- max(if (divergent) min(0.99, 1 - (1 - ad) / 4) else ad, ESCALATE_AD_FLOOR)
   }
   fit$n_rounds <- round
   fit$final_iter <- iter
+  fit$final_warm <- warm
   fit$final_ad <- ad
   fit
 }
@@ -273,7 +321,20 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # How much computation this fit needed: 1 = met the criterion on the first attempt.
       res$n_rounds <- pfit$n_rounds
       res$final_iter <- pfit$final_iter
+      res$final_warm <- pfit$final_warm
       res$final_ad <- pfit$final_ad
+      # E-BFMI is recorded but is NOT part of the escalation criterion, because no amount of
+      # computation moves it: it is a function of the adapted metric and step size, so it is inert to
+      # sampling length by construction, and was measured to be nearly inert to warmup as well. It is
+      # also concentrated in the stationary arms (median 0.41, 10 of 76 fits below 0.3, versus median
+      # 0.78 and none below 0.3 for nonstat) yet essentially unrelated to the mixing of the estimands:
+      # across the stationary round-1 fits, cor(ebfmi, rhat_M) = -0.12 and cor(ebfmi, ess_delta1) =
+      # +0.07, against -0.34 with lp_gap_max and -0.31 with the divergence rate. So it tracks the
+      # energy geometry, not delta. Recording it per fit is what makes that checkable rather than
+      # asserted: the summary can compare delta error and noise_abs_tr between the low-E-BFMI fits and
+      # the rest, exactly as for rhat_M.
+      res$ebfmi_min <- sdg$ebfmi_min
+      res$n_tree <- sdg$n_tree
 
       # Overfitting of the treated unit's pre-treatment window -- the basis the counterfactual is
       # extrapolated from, and the only fit that feeds the delta estimate.
@@ -346,7 +407,8 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
 
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
-    "fit_with_escalation", "ESCALATE_MAX", "ESCALATE_RHAT_M", "ESCALATE_ESS", "ESCALATE_DIV_RATE")
+    "fit_with_escalation", "ESCALATE_MAX", "ESCALATE_RHAT_M", "ESCALATE_ESS", "ESCALATE_DIV_RATE",
+    "ESCALATE_ITER", "ESCALATE_WARM", "ESCALATE_AD_FLOOR")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
@@ -360,25 +422,68 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   # Absolute log path, so workers write it where the master expects regardless of
   # their working directory.
   progress_log <- file.path(getwd(), "progress.log")
-  cat("", file = progress_log) # truncate: fresh per-worker progress log per run
   t0 <- Sys.time()
+
+  # Per-rep checkpoints. A single failing task used to abort the whole study via %dorng% and take
+  # every completed rep with it -- which is how ~1 hour of a 200-rep run was lost to a disk-quota
+  # error on the temp directory. Each rep now writes its own row as soon as it finishes, and a rerun
+  # picks up the rows that already exist instead of recomputing them. Two consequences worth knowing:
+  #   * A rep that errors records a `failed = TRUE` row and the study continues; the error text is
+  #     kept in the row and echoed to progress.log.
+  #   * The checkpoint directory is keyed to the study seed and rep count, so changing either starts
+  #     a fresh set rather than silently reusing rows from a different configuration. Delete the
+  #     directory by hand to force a full recompute under the same configuration.
+  ckpt_dir <- file.path(getwd(), sprintf("ckpt_ns_seed%d_reps%d", seed, reps))
+  dir.create(ckpt_dir, showWarnings = FALSE)
+  n_resume <- length(list.files(ckpt_dir, pattern = "^rep_.*\\.rds$"))
+  if (n_resume > 0) {
+    cat(sprintf("  resuming: %d of %d reps already checkpointed in %s\n\n",
+      n_resume, reps, basename(ckpt_dir)))
+  } else {
+    cat("", file = progress_log) # truncate: fresh per-worker progress log per run
+  }
 
   # Single (non-nested) foreach, so %dorng% gives each task a reproducible RNG
   # stream invariant to worker count. Invariant: keep this a single, non-nested loop.
   study_res <-
     foreach(
       s = study_units, iter = seq(reps),
-      .combine = "rbind", .export = exp_vars, .packages = exp_packages,
+      # bind_rows rather than rbind: a failed rep contributes a short row, and rbind would error on
+      # the column mismatch instead of recording the failure.
+      .combine = function(...) dplyr::bind_rows(...),
+      .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      unit_res <- as.data.frame(run_sim_stat(test_data, s, K_latent, post_check, progress_log = progress_log))
-      worker_progress(sprintf("iteration %d (unit %d)", iter, s), logfile = progress_log)
-      unit_res
+      # Rep index AND unit in the filename, so a checkpoint can never be reused for a different
+      # dataset even if study_units were to change under a reused directory.
+      ckpt_file <- file.path(ckpt_dir, sprintf("rep_%04d_unit_%04d.rds", iter, s))
+      if (file.exists(ckpt_file)) {
+        readRDS(ckpt_file)
+      } else {
+        unit_res <- tryCatch(
+          as.data.frame(run_sim_stat(test_data, s, K_latent, post_check, progress_log = progress_log)),
+          error = function(e) {
+            cat(sprintf("[%s] iteration %d (unit %d) FAILED: %s\n",
+              format(Sys.time(), "%H:%M"), iter, s, conditionMessage(e)),
+              file = progress_log, append = TRUE)
+            data.frame(error = conditionMessage(e))
+          }
+        )
+        unit_res$rep <- iter
+        unit_res$unit <- s
+        if (is.null(unit_res$error)) unit_res$error <- NA_character_
+        unit_res$failed <- !is.na(unit_res$error)
+        saveRDS(unit_res, ckpt_file)
+        worker_progress(sprintf("iteration %d (unit %d)", iter, s), logfile = progress_log)
+        unit_res
+      }
     }
 
+  n_failed <- sum(study_res$failed, na.rm = TRUE)
   cat(sprintf(
-    "--- study complete: %d tasks in %.1f min ---\n",
-    reps, as.numeric(difftime(Sys.time(), t0, units = "mins"))
+    "--- study complete: %d tasks in %.1f min%s ---\n",
+    reps, as.numeric(difftime(Sys.time(), t0, units = "mins")),
+    if (n_failed > 0) sprintf("; %d FAILED (see the `error` column and progress.log)", n_failed) else ""
   ))
 
   return(study_res)
