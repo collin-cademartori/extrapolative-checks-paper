@@ -97,9 +97,10 @@ the history shows, and the real footprint is smaller:
 2. ex1's `stat_weak` vs `stat_strong` priors are re-separated — they currently produce nearly the
    same results, so another production commit to `ex1_sim_study.r` is expected. Merge after that
    lands, not before.
-3. ex2 verified under the ported escalation ladder and the inherited thresholds (`rhat_M > 1.01`,
-   `ess < 400`, div rate > 0.1%, ad floor 0.95), which were calibrated on ex1's sampler and may not
-   suit ex2's intercepts / `alpha_diag = 0` / 4 chains.
+3. ex2 verified on a real run under the ported escalation ladder and the inherited thresholds
+   (`rhat_M > 1.01`, `ess < 400`, div rate > 0.1%, ad floor 0.95), which were calibrated on ex1's
+   sampler and may not suit ex2's intercepts, 4 chains, or 500 sampling iterations. Only a 4-task
+   reduced smoke has exercised the plumbing so far. See TESTING_QUEUE.md B1, B2, D2.
 
 ## Open questions
 
