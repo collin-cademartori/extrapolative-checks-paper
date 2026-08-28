@@ -38,13 +38,13 @@ draw_to_init <- function(vals) {
 }
 
 pathfinder_inits <- function(mod, stat_data, n_chains, num_paths = NULL, draws = NULL,
-                             lp_gap = 10, seed = NULL, quiet = TRUE) {
+                             lp_gap = 10, seed = NULL, quiet = TRUE, output_dir = NULL) {
   num_paths <- if (is.null(num_paths)) max(8L, 2L * n_chains) else num_paths
   draws <- if (is.null(draws)) max(400L, 40L * n_chains) else draws
 
   pf <- tryCatch(
     mod$pathfinder(data = stat_data, num_paths = num_paths, draws = draws, seed = seed,
-      refresh = 0, show_messages = !quiet, show_exceptions = !quiet),
+      refresh = 0, show_messages = !quiet, show_exceptions = !quiet, output_dir = output_dir),
     error = function(e) { warning("pathfinder failed: ", conditionMessage(e)); NULL })
   if (is.null(pf)) return(NULL)
 

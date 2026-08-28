@@ -24,6 +24,31 @@ sample_model <- function(
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))
 
+  # Where CmdStan writes its per-chain CSVs. Left to cmdstanr these go to R's session tempdir, which
+  # on the study machine is /tmp -- a TMPFS, so those CSVs are held in RAM against a cap that is
+  # typically half of physical memory. That is what killed two long runs: once as an OOM kill, and
+  # once (after the $draws() fix cut R's own heap use) as tmpfs hitting its size cap and returning
+  # ENOSPC, which surfaced as "disk is full in the temporary directory" from data.table and then
+  # "No chains finished successfully" as CmdStan could no longer write at all.
+  #
+  # The files are unavoidably live for the DURATION of a fit -- roughly 264 MB at the round-2 rung
+  # (8000 iterations x 3 chains) and 396 MB at round 3 -- so unlinking them afterwards, which
+  # sample_model already does, is not enough on its own when ~19 workers are fitting at once.
+  #
+  # Set CMDSTAN_OUTPUT_DIR to a path on real disk to move them off tmpfs entirely. Each fit gets its
+  # own subdirectory, removed on exit so that a fit which ERRORS does not leak its CSVs either --
+  # the ordinary cleanup below only runs on the success path.
+  out_dir <- NULL
+  csv_root <- Sys.getenv("CMDSTAN_OUTPUT_DIR", "")
+  if (nzchar(csv_root)) {
+    dir.create(csv_root, showWarnings = FALSE, recursive = TRUE)
+    # basename(tempfile()) for a unique name: it uses R's internal counter and, unlike sample(),
+    # does NOT advance the global RNG, which would break the study's reproducibility.
+    out_dir <- file.path(csv_root, basename(tempfile("fit_")))
+    dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+    on.exit(unlink(out_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  }
+
   # Draw the shuffle index *before* $sample(): cmdstanr's $sample() advances R's
   # global RNG, so drawing it afterward would make the draw ordering
   # irreproducible. Invariant: this must precede the fit.
@@ -56,7 +81,8 @@ sample_model <- function(
 
   # Optional Pathfinder warm start: seed every chain from a draw in the dominant lp mode, discarding modes which are vanishingly tiny compared to the dominant mode.
   init_arg <- if (isTRUE(pathfinder_init)) {
-    pfi <- pathfinder_inits(ife_mod, stat_data, n_chains, seed = seed, quiet = quiet)
+    pfi <- pathfinder_inits(ife_mod, stat_data, n_chains, seed = seed, quiet = quiet,
+      output_dir = out_dir)
     if (is.null(pfi)) (if (is.null(init)) 2 else init) else pfi
   } else if (is.null(init)) 2 else init
 
@@ -72,7 +98,8 @@ sample_model <- function(
     refresh = if (quiet) 0 else 100,
     show_exceptions = !quiet,
     show_messages = !quiet,
-    seed = seed
+    seed = seed,
+    output_dir = out_dir
   )
 
   # Sampler diagnostics (posterior fits only): divergences, max-treedepth hits, min

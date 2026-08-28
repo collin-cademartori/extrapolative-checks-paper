@@ -17,6 +17,33 @@ n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
 } else {
   max(1, round(detectCores() / 2) - 1)
 }
+# Keep CmdStan's CSVs and R's temp staging OFF /tmp. On the study machine /tmp is a TMPFS, so
+# anything written there is held in RAM against a cap of roughly half of physical memory. Two long
+# runs died on this: one as an OOM kill, and one -- after the $draws() fix cut R's own heap use --
+# as tmpfs hitting its size cap, which surfaced as data.table's "disk is full in the temporary
+# directory" and then "No chains finished successfully" once CmdStan could not write at all.
+#
+# Two separate consumers, and output_dir only covers the first:
+#   CMDSTAN_OUTPUT_DIR  the per-chain sampling CSVs, live for the whole duration of a fit
+#                       (~264 MB at the round-2 rung, ~396 MB at round 3, times the worker count).
+#   TMPDIR              cmdstanr reads draws with data.table::fread(cmd = "grep -v '^#' ..."), which
+#                       stages the command's output through a file in tempdir() before parsing it.
+#                       That is set from TMPDIR at R STARTUP, so it must be exported BEFORE
+#                       makeCluster() -- the PSOCK workers inherit the environment, and setting it
+#                       afterwards would not move their tempdir().
+# Override either by exporting it before launching the script.
+scratch_root <- Sys.getenv("STUDY_SCRATCH", file.path(getwd(), ".scratch"))
+dir.create(scratch_root, showWarnings = FALSE, recursive = TRUE)
+if (!nzchar(Sys.getenv("CMDSTAN_OUTPUT_DIR")))
+  Sys.setenv(CMDSTAN_OUTPUT_DIR = file.path(scratch_root, "cmdstan"))
+if (!nzchar(Sys.getenv("STUDY_KEEP_TMPDIR"))) {
+  tmp_dir <- file.path(scratch_root, "rtmp")
+  dir.create(tmp_dir, showWarnings = FALSE, recursive = TRUE)
+  Sys.setenv(TMPDIR = tmp_dir, TMP = tmp_dir, TEMP = tmp_dir)
+}
+cat(sprintf("  scratch: CMDSTAN_OUTPUT_DIR=%s  TMPDIR=%s\n",
+  Sys.getenv("CMDSTAN_OUTPUT_DIR"), Sys.getenv("TMPDIR")))
+
 cl <- makeCluster(n_cores, outfile = "")
 registerDoParallel(cl)
 
