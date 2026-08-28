@@ -139,7 +139,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # (it centres on the observed sd at ~1.7x) but is too diffuse to discriminate on its own -- a
   # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
   # consistency of tau is what selects the multiple.
-  stat_scale_multiple <- 2
+  stat_scale_multiple <- 1.5
   overall_scales_stat <- stat_scale_multiple * apply(test_ys, 2, function(y) sqrt(mean(y^2)))
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
