@@ -317,9 +317,13 @@ sample_model <- function(
 #
 # The ladder itself is per-example, since the two studies have different base configurations. Build
 # one with escalation_ladder() and pass it in.
+# A ZERO-LENGTH ladder disables escalation: max_rounds becomes 1, so fit_with_escalation() breaks
+# after the first fit by construction. That is the honest way to express "no escalation" -- the
+# alternative, setting rhat_M = Inf / ess = 0 / div_rate = 1 so no criterion can ever fire, works
+# but hides the intent behind three unreachable numbers.
 escalation_ladder <- function(iter, warm, ad_floor = 0.95, rhat_M = 1.01,
                               ess = 400, div_rate = 0.001) {
-  stopifnot(length(iter) == length(warm), length(iter) >= 1)
+  stopifnot(length(iter) == length(warm))
   list(iter = as.integer(iter), warm = as.integer(warm), ad_floor = ad_floor,
        rhat_M = rhat_M, ess = ess, div_rate = div_rate,
        max_rounds = length(iter) + 1L)   # rounds INCLUDING the unescalated first attempt

@@ -8,10 +8,23 @@ library(doParallel)
 library(doRNG)
 library(purrr)
 
-# Worker count: pass as the first CLI arg (e.g. `Rscript ex1_sim_study.r 4`),
-# otherwise a conservative default. (Apple Silicon has no hyperthreading, so base
-# this on physical cores and do not oversubscribe.)
-requested_cores <- suppressWarnings(as.integer(commandArgs(trailingOnly = TRUE)[1]))
+# (Apple Silicon has no hyperthreading, so base the worker count on physical cores and do not
+# oversubscribe.)
+# Command line: Rscript ex1_sim_study.r [n_cores] [mode] [reps]
+#   n_cores  worker count (default: half the physical cores, less one)
+#   mode     "full" (default) or "fast"
+#   reps     overrides the mode's default rep count
+#
+# FAST MODE is for iterating on the model specification -- e.g. searching for a workable trio of tau
+# priors -- where the question is whether the arms separate, not whether any single fit has
+# converged. It shortens the chains, disables escalation entirely (a zero-length ladder, so
+# fit_with_escalation breaks after the first fit), and cuts the rep count. Diagnostics are still
+# recorded per fit, so a fast run will show elevated rhat_M; that is expected and is NOT evidence
+# about the specification. Never report fast-mode numbers.
+.args <- commandArgs(trailingOnly = TRUE)
+requested_cores <- suppressWarnings(as.integer(.args[1]))
+STUDY_MODE <- if (length(.args) >= 2 && tolower(.args[2]) %in% c("fast", "f")) "fast" else "full"
+.reps_arg <- suppressWarnings(as.integer(.args[3]))
 n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
   requested_cores
 } else {
@@ -137,8 +150,13 @@ worker_progress <- function(label, logfile = "progress.log") {
 #     run suggests 20000 rather than 12000 is what separates them; 137 stat_weak (1.058) mixed
 #     slowly with treedepth saturating 27 times, which is a geometry problem that more iterations
 #     do not fix.
-EX1_LADDER <- escalation_ladder(iter = c(8000L, 12000L), warm = c(2000L, 3000L))
+EX1_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)) else
+  escalation_ladder(iter = c(8000L, 12000L), warm = c(2000L, 3000L))
 ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
+
+# Base sampling length, per mode. All three arms share these.
+EX1_ITER <- if (STUDY_MODE == "fast") 500L else 2000L
+EX1_WARM <- if (STUDY_MODE == "fast") 500L else 500L
 
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
@@ -200,7 +218,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # enough that a clean refit leaves no trace -- so the cost showed up as memory pressure rather
       # than as log lines. Paying 4x on the base fit is cheaper than refitting a fifth of them at
       # 8000, and it restores the arm to the near-pristine behaviour it had at 2000.
-      iter = 2000, iter_warm = 500,
+      iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
     seeds = fit_seeds[1, ], label = sprintf("unit %d nonstat", i), progress_log = progress_log, ladder = EX1_LADDER
@@ -219,7 +237,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent + 1, ad = 0.8,
-      iter = 2000, iter_warm = 500,
+      iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
     seeds = fit_seeds[2, ], label = sprintf("unit %d stat_weak", i), progress_log = progress_log, ladder = EX1_LADDER
@@ -242,7 +260,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent + 1, ad = 0.8,
-      iter = 2000, iter_warm = 500,
+      iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
     seeds = fit_seeds[3, ], label = sprintf("unit %d stat_strong", i), progress_log = progress_log, ladder = EX1_LADDER
@@ -401,7 +419,8 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
 
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
-    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER")
+    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER",
+    "EX1_ITER", "EX1_WARM")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
@@ -426,7 +445,10 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   #   * The checkpoint directory is keyed to the study seed and rep count, so changing either starts
   #     a fresh set rather than silently reusing rows from a different configuration. Delete the
   #     directory by hand to force a full recompute under the same configuration.
-  ckpt_dir <- file.path(getwd(), sprintf("ckpt_ns_seed%d_reps%d", seed, reps))
+  # STUDY_MODE is in the directory name so a fast run's checkpoints can never be resumed into a
+  # full run -- the two hold results from different sampler configurations at the same rep index.
+  ckpt_dir <- file.path(getwd(),
+    sprintf("ckpt_ns_%s_seed%d_reps%d", STUDY_MODE, seed, reps))
   dir.create(ckpt_dir, showWarnings = FALSE)
   n_resume <- length(list.files(ckpt_dir, pattern = "^rep_.*\\.rds$"))
   if (n_resume > 0) {
@@ -482,12 +504,21 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   return(study_res)
 }
 
-study_reps <- 30
+study_reps <- if (!is.na(.reps_arg)) .reps_arg else if (STUDY_MODE == "fast") 25L else 200L
+cat(sprintf("\n=== mode: %s | reps: %d | iter/warm: %d/%d | escalation: %s ===\n",
+  STUDY_MODE, study_reps, EX1_ITER, EX1_WARM,
+  if (EX1_LADDER$max_rounds > 1) sprintf("up to %d rounds", EX1_LADDER$max_rounds) else "OFF"))
+if (STUDY_MODE == "fast")
+  cat("    FAST MODE -- for specification search only. Elevated rhat_M is expected here and says\n",
+      "   nothing about the specification. Do not report these numbers.\n", sep = "")
 sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
 
 stopCluster(cl)
 
 # Save the raw study results; numeric summaries and plots are produced by
 # ex1_sim_study_summary.r (run it to view the results).
-save(sim_study_stat, file = "sim_study_ns.RData")
-cat("Results saved to sim_study_ns.RData -- run ex1_sim_study_summary.r to summarize.\n")
+# Mode-keyed output, so a quick fast-mode check cannot silently destroy the full study's results.
+out_file <- if (STUDY_MODE == "fast") "sim_study_ns_fast.RData" else "sim_study_ns.RData"
+save(sim_study_stat, file = out_file)
+cat(sprintf("Results saved to %s -- run `Rscript ex1_sim_study_summary.r %s` to summarize.\n",
+  out_file, out_file))

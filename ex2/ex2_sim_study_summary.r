@@ -4,7 +4,12 @@ library(ggplot2)
 library(tidyr)
 
 source("../plotting.r")
-load("sim_study_ints.RData")
+# Optional CLI argument selects the results file, so a fast-mode run can be summarized without
+# touching the full study's output: Rscript ex2_sim_study_summary.r sim_study_ints_fast.RData
+.res_file <- commandArgs(trailingOnly = TRUE)[1]
+if (is.na(.res_file)) .res_file <- "sim_study_ints.RData"
+cat(sprintf("\nLoading %s\n", .res_file))
+load(.res_file)
 
 # The checkpointing driver adds bookkeeping columns (rep, failed, error) that are not per-arm
 # statistics. They must come off before anything below: `error` is character, so the

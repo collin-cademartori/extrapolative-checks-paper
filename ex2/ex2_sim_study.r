@@ -9,9 +9,21 @@ library(doParallel)
 library(doRNG)
 library(purrr)
 
-# Worker count: pass as the first CLI arg (e.g. `Rscript ex2_sim_study.r 4`),
-# otherwise a conservative default.
-requested_cores <- suppressWarnings(as.integer(commandArgs(trailingOnly = TRUE)[1]))
+# Command line: Rscript ex2_sim_study.r [n_cores] [mode] [reps]
+#   n_cores  worker count (default: half the physical cores, less one)
+#   mode     "full" (default) or "fast"
+#   reps     overrides the mode's default rep count
+#
+# FAST MODE is for iterating on the model specification -- e.g. searching for a workable trio of tau
+# priors -- where the question is whether the arms separate, not whether any single fit has
+# converged. It shortens the chains, disables escalation entirely (a zero-length ladder, so
+# fit_with_escalation breaks after the first fit), and cuts the rep count. Diagnostics are still
+# recorded per fit, so a fast run will show elevated rhat_M; that is expected and is NOT evidence
+# about the specification. Never report fast-mode numbers.
+.args <- commandArgs(trailingOnly = TRUE)
+requested_cores <- suppressWarnings(as.integer(.args[1]))
+STUDY_MODE <- if (length(.args) >= 2 && tolower(.args[2]) %in% c("fast", "f")) "fast" else "full"
+.reps_arg <- suppressWarnings(as.integer(.args[3]))
 n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
   requested_cores
 } else {
@@ -118,8 +130,13 @@ worker_progress <- function(label, logfile = "progress.log") {
 # The thresholds (rhat_M > 1.01, ess_delta1 < 400, divergence rate > 0.1%) and the adapt_delta floor
 # of 0.95 are inherited from ex1. A 48-fit run at the old base showed ess and the divergence rate
 # never bind here (0 divergences, ess_delta1 >= 2205), so rhat_M is the only live criterion.
-EX2_LADDER <- escalation_ladder(iter = c(6000L, 9000L), warm = c(2500L, 4000L))
+EX2_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)) else
+  escalation_ladder(iter = c(6000L, 9000L), warm = c(2500L, 4000L))
 ESCALATE_MAX <- EX2_LADDER$max_rounds   # seeds are drawn one per fit per round
+
+# Base sampling length, per mode. Both arms share these.
+EX2_ITER <- if (STUDY_MODE == "fast") 500L else 1500L
+EX2_WARM <- if (STUDY_MODE == "fast") 500L else 1000L
 
 # Data-driven anchor ordering for the triangular (Cholesky) loadings. Keeps the treated
 # unit (column 1) first, then greedily picks the untreated columns most orthogonal to
@@ -262,7 +279,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       include_factor_means = TRUE,
       fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 1500, iter_warm = 1000,
+      iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4
     ),
     seeds = fit_seeds[1, ],
@@ -283,7 +300,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       include_ints = TRUE, int_scale = 3, int_loc = 4,
       fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 1500, iter_warm = 1000,
+      iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4
     ),
     seeds = fit_seeds[2, ],
@@ -394,7 +411,8 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
     "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits",
     "anchor_order", "unpermute_untreated",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
-    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX2_LADDER"
+    "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX2_LADDER",
+    "EX2_ITER", "EX2_WARM"
   )
   exp_packages <- c("cmdstanr", "posterior", "ggplot2", "dplyr")
 
@@ -427,7 +445,10 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
   # The directory is keyed to the study seed and the grid size, so changing either starts a fresh
   # set rather than silently reusing rows from a different configuration; delete it by hand to force
   # a full recompute under the same configuration.
-  ckpt_dir <- file.path(getwd(), sprintf("ckpt_ints_seed%d_n%d", seed, nrow(grid)))
+  # STUDY_MODE is in the directory name so a fast run's checkpoints can never be resumed into a
+  # full run -- the two hold results from different sampler configurations at the same task index.
+  ckpt_dir <- file.path(getwd(),
+    sprintf("ckpt_ints_%s_seed%d_n%d", STUDY_MODE, seed, nrow(grid)))
   dir.create(ckpt_dir, showWarnings = FALSE)
   n_resume <- length(list.files(ckpt_dir, pattern = "^task_.*\\.rds$"))
   if (n_resume > 0) {
@@ -487,8 +508,15 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
   return(study_res)
 }
 
+study_reps <- if (!is.na(.reps_arg)) .reps_arg else if (STUDY_MODE == "fast") 6L else 200L
+cat(sprintf("\n=== mode: %s | reps/cond: %d | iter/warm: %d/%d | escalation: %s ===\n",
+  STUDY_MODE, study_reps, EX2_ITER, EX2_WARM,
+  if (EX2_LADDER$max_rounds > 1) sprintf("up to %d rounds", EX2_LADDER$max_rounds) else "OFF"))
+if (STUDY_MODE == "fast")
+  cat("    FAST MODE -- for specification search only. Elevated rhat_M is expected here and says\n",
+      "   nothing about the specification. Do not report these numbers.\n", sep = "")
 sim_study_ints <- run_sim_study_intercepts(
-  reps = 200,
+  reps = study_reps,
   N_comps = c(2, 3),
   sims = c(0.7, 0.9),
   K_latent = 3,
@@ -500,5 +528,8 @@ stopCluster(cl)
 
 # Save the raw study results; numeric summaries and plots are produced by
 # ex2_sim_study_summary.r (run it to view the results).
-save(sim_study_ints, file = "sim_study_ints.RData")
-cat("Results saved to sim_study_ints.RData -- run ex2_sim_study_summary.r to summarize.\n")
+# Mode-keyed output, so a quick fast-mode check cannot silently destroy the full study's results.
+out_file <- if (STUDY_MODE == "fast") "sim_study_ints_fast.RData" else "sim_study_ints.RData"
+save(sim_study_ints, file = out_file)
+cat(sprintf("Results saved to %s -- run `Rscript ex2_sim_study_summary.r %s` to summarize.\n",
+  out_file, out_file))
