@@ -63,16 +63,35 @@ worker_progress <- function(label, logfile = "progress.log") {
 # adaptive computation rather than selection and why rhat_M is the criterion. Only the rungs are
 # per-example.
 #
-# ex2's base configuration is iter = 500 over 4 chains (2000 draws), against ex1's 2000 over 3
-# (6000). The rungs below are ex1's multipliers rescaled to that base -- 4x the draws at round 2 and
-# 10x at round 3 -- rather than ex1's absolute iteration counts, which would be a 16x/40x jump here.
-# Warmup escalates in step, as in ex1, so a long round is not run off a short adaptation.
+# The base is iter = 1500 / warm = 1000 over 4 chains (6000 draws), NOT the 500/500 it started at.
+# That was measured on six datasets held fixed across three configurations (num_comp = 3, sim = 0.9,
+# seed 52918), because at 500/500 the ints arm sat just over the rhat_M threshold in most fits and
+# would have escalated on roughly 71% of the grid:
+#
+#   ints      500 / 500    rhat_M med 1.0091  max 1.0173  2 of 6 over 1.01   ess med  962
+#   ints     1500 / 1000   rhat_M med 1.0038  max 1.0065  0 of 6             ess med 2993
+#   ints     2000 / 1500   rhat_M med 1.0031  max 1.0038  0 of 6             ess med 3444
+#
+# So it was never a hard posterior, only an under-sampled one: no divergences at any rung, E-BFMI
+# healthy throughout, and rhat_M tracking ESS. 1500/1000 clears the threshold with headroom rather
+# than marginally, and 2000/1500 improves the worst case only from 1.0065 to 1.0038 -- nothing
+# actionable. Escalating from a 500/500 base would also have cost MORE than simply running longer
+# (~80 h against ~50 h on 8 workers for the full grid) while leaving the recorded diagnostics
+# stopped-on-success.
+#
+# The science is invariant across all three configurations: the ints-minus-no_ints gap on
+# spurious-comparator correlation was +0.129 / +0.132 / +0.137 and on |absz| +0.659 / +0.639 /
+# +0.625, so none of the conclusions depend on the sampler settings.
+#
+# Rungs keep ex1's 4x draw multiplier at round 2 (6000 iter x 4 chains = 24000 draws). Round 3 is
+# capped at 36000 draws rather than a 10x 60000, matching the absolute ceiling ex1's round 3 was
+# given for memory: Y_latent and Y_pred are materialized per fit, so cost scales with the draw count
+# regardless of which study is running. With escalation now rare the top rung matters little anyway.
 #
 # The thresholds (rhat_M > 1.01, ess_delta1 < 400, divergence rate > 0.1%) and the adapt_delta floor
-# of 0.95 are inherited unchanged: those were calibrated on ex1's sampler behaviour, not on its data,
-# and adapt_delta 0.95 cleared divergences in 8 of 8 ex1 fits where it was tried. They should be
-# revisited once ex2 has produced a run's worth of its own diagnostics.
-EX2_LADDER <- escalation_ladder(iter = c(2000L, 5000L), warm = c(1500L, 3000L))
+# of 0.95 are inherited from ex1. A 48-fit run at the old base showed ess and the divergence rate
+# never bind here (0 divergences, ess_delta1 >= 2205), so rhat_M is the only live criterion.
+EX2_LADDER <- escalation_ladder(iter = c(6000L, 9000L), warm = c(2500L, 4000L))
 ESCALATE_MAX <- EX2_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 # Data-driven anchor ordering for the triangular (Cholesky) loadings. Keeps the treated
@@ -216,7 +235,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       include_factor_means = TRUE,
       fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 500, iter_warm = 500,
+      iter = 1500, iter_warm = 1000,
       n_chains = 4
     ),
     seeds = fit_seeds[1, ],
@@ -237,7 +256,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       include_ints = TRUE, int_scale = 3, int_loc = 4,
       fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
-      iter = 500, iter_warm = 500,
+      iter = 1500, iter_warm = 1000,
       n_chains = 4
     ),
     seeds = fit_seeds[2, ],
