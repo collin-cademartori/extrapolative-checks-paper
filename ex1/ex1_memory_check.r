@@ -45,6 +45,22 @@
 
 suppressPackageStartupMessages({library(cmdstanr); library(posterior)})
 
+# Route CmdStan's CSVs and R's fread staging exactly as the study drivers do. Without this the
+# check writes to tempdir(), which on the study machine is /tmp -- a tmpfs -- so it would be
+# measuring a configuration the study no longer uses, and consuming RAM the study no longer
+# consumes. The heap metric would survive that (tmpfs is not in R's heap) but the process-RSS
+# column and the safe-worker-count projection would both be measuring the wrong setup.
+# Must be set before the worker SUBPROCESSES start, since R fixes tempdir() at startup.
+scratch_root <- Sys.getenv("STUDY_SCRATCH", file.path(getwd(), ".scratch"))
+dir.create(scratch_root, showWarnings = FALSE, recursive = TRUE)
+CSV_DIR <- file.path(scratch_root, "cmdstan")
+dir.create(CSV_DIR, showWarnings = FALSE, recursive = TRUE)
+if (!nzchar(Sys.getenv("STUDY_KEEP_TMPDIR"))) {
+  tmp_dir <- file.path(scratch_root, "rtmp")
+  dir.create(tmp_dir, showWarnings = FALSE, recursive = TRUE)
+  Sys.setenv(TMPDIR = tmp_dir, TMP = tmp_dir, TEMP = tmp_dir)
+}
+
 peak_rss_mb <- function() {
   if (file.exists("/proc/self/status")) {
     v <- grep("^VmHWM:", readLines("/proc/self/status"), value = TRUE)
@@ -79,7 +95,7 @@ build_data <- function(unit = 90L) {
       fit_overall_scales = 0, nonstationary = 1, unit_intercepts = 0, factor_means = 0,
       sample_posterior = 0, num_treated = 0, gamma_scale = 1, gamma_loc = 0, alpha_diag = 10),
     chains = 1, iter_warmup = 200, iter_sampling = 400, refresh = 0,
-    show_messages = FALSE, show_exceptions = FALSE, seed = pp_seed)
+    show_messages = FALSE, show_exceptions = FALSE, seed = pp_seed, output_dir = CSV_DIR)
   ys <- extract_variable_array(pp$draws("Y_prior"), "Y_prior")[unit, 1, , ]
   try(unlink(pp$output_files(), force = TRUE), silent = TRUE)
   list(mod = ife_mod, ys = ys)
@@ -99,13 +115,14 @@ run_one <- function(mode, iter) {
   # Pathfinder init is included because the study uses it and it contributes to the peak; leaving
   # it out would make the projected safe-worker-count optimistic.
   source("../pathfinder_init.r")
-  pfi <- tryCatch(pathfinder_inits(bd$mod, stat_data, 3, seed = 4242, quiet = TRUE),
-    error = function(e) NULL)
+  pfi <- tryCatch(pathfinder_inits(bd$mod, stat_data, 3, seed = 4242, quiet = TRUE,
+    output_dir = CSV_DIR), error = function(e) NULL)
 
   f <- bd$mod$sample(data = stat_data, chains = 3, parallel_chains = 3,
     iter_warmup = 500, iter_sampling = iter, adapt_delta = 0.8,
     init = if (is.null(pfi)) 2 else pfi,
-    refresh = 0, show_messages = FALSE, show_exceptions = FALSE, seed = 4242)
+    refresh = 0, show_messages = FALSE, show_exceptions = FALSE, seed = 4242,
+    output_dir = CSV_DIR)
 
   # --- measurement window opens -----------------------------------------------------------------
   # R's own heap high-water mark is the primary metric, NOT process RSS. gc()'s "max used" is a
@@ -168,6 +185,7 @@ cat(sprintf("  host RAM      : %s\n", if (is.na(ram)) "unknown" else sprintf("%.
 cat(sprintf("  RSS measure   : %s\n",
   if (is_true_peak) "VmHWM (true peak)" else "ps RSS (CURRENT, understates the peak -- prefer Linux)"))
 cat(sprintf("  rungs         : %s\n", paste(rungs, collapse = ", ")))
+cat(sprintf("  CSVs -> %s\n  TMPDIR -> %s\n", CSV_DIR, Sys.getenv("TMPDIR")))
 cat(sprintf("  projecting for: %d concurrent workers\n\n", n_workers))
 cat("  'bare'  = extract delta/cor_sq via $draws()          <- the pre-fix code\n")
 cat("  'named' = extract delta/cor_sq via $draws('delta')   <- the committed fix\n\n")
