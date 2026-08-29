@@ -158,10 +158,49 @@ ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
 EX1_ITER <- if (STUDY_MODE == "fast") 500L else 2000L
 EX1_WARM <- if (STUDY_MODE == "fast") 500L else 500L
 
+# Data-driven anchor ordering for the triangular (Cholesky) loadings. Copied verbatim from
+# ex2_sim_study.r. Keeps the treated unit (column 1) first, then greedily picks the untreated
+# columns most orthogonal to those already chosen so the leading K x K loading block is full rank --
+# giving every factor a distinct anchor and avoiding near-zero Cholesky diagonals. This is a
+# reparameterization only: the fitted means, treatment effect, and (permutation-invariant) check
+# statistics do not depend on the choice.
+#
+# ex2's companion unpermute_untreated() is NOT ported: it exists to map per-untreated-unit outputs
+# (cor_sq, abs_cors_err) back to the original order, and ex1 stores no per-unit fit output.
+anchor_order <- function(y, K) {
+  N <- ncol(y)
+  yc <- scale(y, center = TRUE, scale = FALSE)
+  sel <- 1L
+  remaining <- setdiff(seq_len(N), sel)
+  while (length(sel) < K && length(remaining) > 0) {
+    Q <- qr.Q(qr(yc[, sel, drop = FALSE]))
+    resid <- yc[, remaining, drop = FALSE] - Q %*% crossprod(Q, yc[, remaining, drop = FALSE])
+    pick <- remaining[which.max(colSums(resid^2))]
+    sel <- c(sel, pick)
+    remaining <- setdiff(remaining, pick)
+  }
+  c(sel, remaining)
+}
+
 run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
+
+  # Anchor-order the columns before fitting, exactly as ex2 does. Two ex1-specific points:
+  #   * The permutation is computed at K_latent + 1, the LARGEST K any arm fits (the two stationary
+  #     arms use K_latent + 1; nonstat uses K_latent). anchor_order's selection is greedy, hence
+  #     prefix-consistent -- anchor_order(y, 5)[1:4] equals anchor_order(y, 4)[1:4] -- so one
+  #     permutation serves both arms and the leading block is full rank for each.
+  #   * perm[1] == 1 by construction, so the treated unit stays in column 1. Everything downstream
+  #     that indexes the treated unit by position (noise_abs_tr, delta) is therefore unaffected;
+  #     the stopifnot makes that dependency explicit rather than implicit.
+  perm <- anchor_order(test_ys, K_latent + 1)
+  stopifnot(perm[1] == 1)
+  fit_ys <- test_ys[, perm]
+  # The DGP's latent signal is permuted alongside, so it stays column-aligned with the fit output
+  # that noise_abs_tr compares it against.
+  true_ys_perm <- test_data$ys_latent[i, , perm]
   # Length of the treatment window; the three fits below all pass num_treated = this.
   num_treated_ex1 <- 5
   # Prior scale for the stationary fits: a multiple of RMS(y), not sd(y).
@@ -185,11 +224,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
   # consistency of tau is what selects the multiple.
   stat_scale_multiple <- 1.5
-  overall_scales_stat <- stat_scale_multiple * apply(test_ys, 2, function(y) sqrt(mean(y^2)))
+  overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
   # be the wrong, inflating scale for integrated data.
-  overall_scales_nonstat <- apply(test_ys, 2, function(y) sd(diff(y)))
+  overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
   # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
@@ -205,7 +244,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       overall_scales = overall_scales_nonstat, err_scale = 0,
       err_scale_mean = 2,
       err_scale_sd = 2,
-      data = test_ys,
+      data = fit_ys,
       autocor_a = 8, autocor_b = 2,
       nonstationary = TRUE, num_treated = 5,
       fit_scales = FALSE,
@@ -232,7 +271,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       overall_scales = overall_scales_stat, err_scale = 0,
       err_scale_mean = 0.1,
       err_scale_sd = 0.1,
-      data = test_ys,
+      data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
@@ -255,7 +294,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       overall_scales = overall_scales_stat, err_scale = 0,
       err_scale_mean = 0.05,
       err_scale_sd = 0.05,
-      data = test_ys,
+      data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
@@ -278,9 +317,9 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
         for (t in 1:T_times) {
           y_bounds <- quantile(stat_y_pred[, t, n], c(0.025, 0.975))
           pred_inc[t, n] <-
-            (test_ys[t, n] >= y_bounds[1]) &&
-              (test_ys[t, n] <= y_bounds[2])
-          pred_width[t, n] <- (y_bounds[2] - y_bounds[1]) / (max(test_ys[, n]) - min(test_ys[, n]))
+            (fit_ys[t, n] >= y_bounds[1]) &&
+              (fit_ys[t, n] <= y_bounds[2])
+          pred_width[t, n] <- (y_bounds[2] - y_bounds[1]) / (max(fit_ys[, n]) - min(fit_ys[, n]))
         }
       }
       res$pred_perc <- mean(pred_inc)
@@ -362,11 +401,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # magnitudes. The magnitude says how far the basis is from the truth; only the covariance says
       # whether that error is ALIGNED WITH THE NOISE, and only noise-aligned error corrupts the
       # extrapolation.
-      true_ys <- test_data$ys_latent[i, , ]
+      true_ys <- true_ys_perm
       fit_means <- apply(pfit$y_means, c(2, 3), mean)
       pre_times <- seq_len(T_times - num_treated_ex1)
       fit_err <- fit_means[pre_times, 1] - true_ys[pre_times, 1]
-      unit_noise <- test_ys[pre_times, 1] - true_ys[pre_times, 1]
+      unit_noise <- fit_ys[pre_times, 1] - true_ys[pre_times, 1]
       res$noise_abs_tr <- as.numeric(cov(fit_err, unit_noise) / var(unit_noise))
 
       return(res)
@@ -379,7 +418,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
   # Show a single unit's fits per rep
   plot_unit <- 2
-  fit_plot <- plot_post_fits_stat(test_ys, pns_means, p2_means, p1_means, unit = plot_unit)
+  fit_plot <- plot_post_fits_stat(fit_ys, pns_means, p2_means, p1_means, unit = plot_unit)
   ggsave(
     fit_plot,
     file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),
@@ -387,7 +426,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   )
 
   if (post_check) {
-    check_plot <- plot_data_matrix_post(test_ys, fits$stat_weak$y_pred)
+    check_plot <- plot_data_matrix_post(fit_ys, fits$stat_weak$y_pred)
     ggsave(
       check_plot,
       file = paste0("../figs/sim_stat_figs/check_plot_", i, ".pdf"),
@@ -418,7 +457,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   )
 
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
-    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES",
+    "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES", "anchor_order",
     "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER",
     "EX1_ITER", "EX1_WARM")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
