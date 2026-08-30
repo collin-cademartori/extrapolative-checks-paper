@@ -38,29 +38,31 @@ overall_scales_stat <- rep(1, 8)
 overall_scales_nonstat <- rep(1, 8)
 
 nonstat_prior_data <- sample_model(
-  overall_scales = 0.5 * overall_scales_nonstat, alpha_diag = 20,
+  overall_scales = overall_scales_nonstat, alpha_diag = 20,
   err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,
-  type = "prior_pred", K_latent = 7, iter = 6000
+  type = "prior_pred", K_latent = 4, iter = 6000,
+  n_chains = 1
 )
 
 nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data <- sample_model(
-  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  overall_scales = 1.5 * overall_scales_stat, alpha_diag = 20,
   err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 7, iter = 6000
+  type = "prior_pred", K_latent = 4, iter = 6000,
+  n_chains = 1
 )
 
 stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data1 <- sample_model(
-  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  overall_scales = 1.5 * overall_scales_stat, alpha_diag = 20,
   # Matches ex1_sim_study's stat_strong: the same truncated-normal form as the weaker prior with
   # location and scale halved, rather than a fixed tau. Estimating tau under a tighter prior makes
   # the two stationary models differ in the STRENGTH of the error prior, not in whether the error
@@ -69,7 +71,8 @@ stat_prior_data1 <- sample_model(
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 7, iter = 6000
+  type = "prior_pred", K_latent = 4, iter = 6000,
+  n_chains = 1
 )
 
 stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
@@ -80,7 +83,8 @@ weak_prior_data <- sample_model(
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 7, iter = 6000
+  type = "prior_pred", K_latent = 4, iter = 6000,
+  n_chains = 1
 )
 
 weak_absr <- apply(weak_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))

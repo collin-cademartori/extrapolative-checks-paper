@@ -225,6 +225,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # consistency of tau is what selects the multiple.
   stat_scale_multiple <- 2
   overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+  #overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, sd)
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
   # be the wrong, inflating scale for integrated data.
@@ -271,13 +272,13 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
       overall_scales = overall_scales_stat, err_scale = 0,
-      err_scale_mean = 0.1,
+      err_scale_mean = 0.05,
       err_scale_sd = 0.1,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
-      type = "posterior", K_latent = K_latent + 1, ad = 0.8,
+      type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
@@ -295,7 +296,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # tau under a tighter prior isolates the strength of the prior as the only difference.
       overall_scales = overall_scales_stat, err_scale = 0,
       err_scale_mean = 0.05,
-      err_scale_sd = 0.05,
+      err_scale_sd = 0.1,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
