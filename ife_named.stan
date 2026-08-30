@@ -319,9 +319,31 @@ generated quantities {
     }
   }
 
-  // Statistic S1 (paper Section 5): the absolute correlation of the first untreated
-  // unit's predictive replicate with time, a summary of monotone trend.
-  real time_cor_pred = abs(pearson_cor(Y_pred[:, 2], times));
+  // Statistic S1 (paper Section 5): monotone trend, as the MEAN over untreated units of each
+  // unit's absolute correlation between its predictive replicate and time.
+  //
+  // Averaged rather than taken on one unit. It used to read Y_pred[:, 2] -- "the first untreated
+  // unit" -- which was arbitrary, and became systematically so once anchor ordering was introduced:
+  // anchor_order maximizes residual sum of squares, so column 2 is the HIGHEST-VARIANCE untreated
+  // unit in 86% of draws. That inflated the observed statistic (mean |cor| 0.658 -> 0.883) and
+  // pushed the stationary arms' p-value below 0.01 in ~40% of reps. Averaging makes S1 invariant to
+  // the column ordering, so anchoring cannot touch it, and cuts its sampling variance by about
+  // sqrt(M - 1).
+  //
+  // The mean of |cor| per unit, NOT |mean of cor|: the former asks "is each unit trending", which is
+  // what the single-unit version asked; the latter would ask "is there a COMMON trend" and would let
+  // units trending in opposite directions cancel.
+  //
+  // Untreated units only. The treated unit's post-treatment window carries delta, which would
+  // contaminate a trend statistic with the treatment effect.
+  real time_cor_pred;
+  {
+    vector[M_units - 1] unit_time_cors;
+    for(n in 2:M_units) {
+      unit_time_cors[n - 1] = abs(pearson_cor(Y_pred[:, n], times));
+    }
+    time_cor_pred = mean(unit_time_cors);
+  }
 
   // Statistic S2 (paper Section 5): the association across untreated units
   // between (i) each unit's correlation with the treated unit and (ii) its

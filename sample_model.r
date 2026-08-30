@@ -247,7 +247,10 @@ sample_model <- function(
     cor_sq_mean <- colMeans(cor_sq)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
-    abs_cor_data <- abs(cor(data[, 2], seq(nrow(data))))
+    # Observed S1, matching the Stan definition exactly: the MEAN over untreated units of each
+    # unit's |correlation with time|. Both sides must average over the same set (columns 2..M of
+    # whatever matrix was fitted), or the p-value compares different quantities.
+    abs_cor_data <- mean(abs(cor(data[, -1, drop = FALSE], seq(nrow(data)))))
     time_cor_pval <- mean(abs_cor_pred > abs_cor_data)
 
     # Statistic S2 (paper Section 5) on the pre-treatment window: the correlation
