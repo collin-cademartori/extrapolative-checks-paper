@@ -43,7 +43,16 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
 # Observed series (grey) and the three posterior-mean fits (nonstationary black;
 # stationary weak/strong blue solid/dashed) for a single unit. data, post_ns, post_2,
 # post_1 are all time x unit matrices; `unit` selects the column to show.
-plot_post_fits_stat <- function(data, post_ns, post_2, post_1, unit) {
+# pred_rep: optionally, a SINGLE posterior predictive replicate for `unit`, drawn on top in red.
+# Pass NULL (the default) to switch it off.
+#
+# Why it is worth seeing: the other three lines are posterior means of Y_latent, the noiseless
+# latent signal. Statistic S1 is instead computed on Y_pred = that signal plus observation noise of
+# scale tau * sigma. The two can look very different, so a model whose fitted mean tracks a trend
+# closely can still fail S1 because the trend in its REPLICATES is diluted by noise. Only the
+# replicate shows what S1 actually sees. One is drawn rather than several deliberately -- the
+# pattern is meant to be read across datasets, and an envelope of draws would clutter the panel.
+plot_post_fits_stat <- function(data, post_ns, post_2, post_1, unit, pred_rep = NULL) {
   series <- function(m) data.frame(time = seq_len(nrow(m)), obs = m[, unit])
 
   plot <- ggplot(mapping = aes(x = time, y = obs)) +
@@ -55,6 +64,14 @@ plot_post_fits_stat <- function(data, post_ns, post_2, post_1, unit) {
     theme(panel.grid = element_blank()) +
     xlab("Time") +
     ylab("Outcome")
+
+  # Added last so it draws on top of the means.
+  if (!is.null(pred_rep)) {
+    plot <- plot + geom_line(
+      data = data.frame(time = seq_along(pred_rep), obs = as.numeric(pred_rep)),
+      color = "red", alpha = 0.8
+    )
+  }
 
   return(plot)
 }

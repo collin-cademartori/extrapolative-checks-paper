@@ -223,12 +223,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # (it centres on the observed sd at ~1.7x) but is too diffuse to discriminate on its own -- a
   # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
   # consistency of tau is what selects the multiple.
-  stat_scale_multiple <- 1.5
+  stat_scale_multiple <- 2
   overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
   # be the wrong, inflating scale for integrated data.
-  overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
+  # On the differenced scale, nonstat uses Beta(8,2) prior for rho. The downward bias on 
+  # realized SD is smaller but nonzero. The small 1.2x multiplier compensates.
+  overall_scales_nonstat <- 1.2 * apply(fit_ys, 2, function(y) sd(diff(y)))
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
   # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
@@ -418,7 +420,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
 
   # Show a single unit's fits per rep
   plot_unit <- 2
-  fit_plot <- plot_post_fits_stat(fit_ys, pns_means, p2_means, p1_means, unit = plot_unit)
+  # One posterior predictive replicate from stat_weak, overlaid in red. Everything here is in
+  # ANCHOR-PERMUTED column order -- fit_ys, the three posterior means, and y_pred alike -- so
+  # plot_unit = 2 is the same unit statistic S1 is computed on (Stan reads Y_pred[:, 2] of the
+  # permuted matrix). stat_weak is the arm whose S1 p-value collapsed, and y_pred is Y_latent plus
+  # observation noise, which is what S1 sees and what the three mean lines do not show.
+  # Set pred_rep = NULL to drop the overlay.
+  fit_plot <- plot_post_fits_stat(fit_ys, pns_means, p2_means, p1_means, unit = plot_unit,
+    pred_rep = fits$stat_weak$y_pred[1, , plot_unit])
   ggsave(
     fit_plot,
     file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),
