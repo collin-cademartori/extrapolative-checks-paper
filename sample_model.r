@@ -234,7 +234,13 @@ sample_model <- function(
     effect_means <- colMeans(effects)
     effect_sds <- apply(effects, 2, sd)
 
-    err_scale <- as.numeric(model_sample$draws("tau"))
+    # tau is now a VECTOR over units, so draws("tau") is [draws x M]. err_scale keeps its scalar
+    # per-draw meaning by reporting the TREATED unit's tau -- unit 1, the only one delta depends on,
+    # and the one every tau summary downstream is about. The full matrix is returned alongside as
+    # err_scale_all so nothing is lost. (Which unit to headline is a reporting choice, not a
+    # modelling one; change it here if the treated unit is not the right summary.)
+    err_scale_mat <- posterior::as_draws_matrix(model_sample$draws("tau"))
+    err_scale <- as.numeric(err_scale_mat[, 1])
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
 
     cor_sq <- extract_variable_array(model_sample$draws("cor_sq"), "cor_sq")[, 1, ]
@@ -271,6 +277,7 @@ sample_model <- function(
       cor_sq = cor_sq_mean,
       abs_cors_err = cor_err_mean,
       err_scale = err_scale,
+      err_scale_all = err_scale_mat,
       time_cor_pval = time_cor_pval,
       loc_cor_pval = loc_cor_pval,
       sampler_diag = sampler_diag,

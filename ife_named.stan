@@ -129,7 +129,14 @@ transformed data {
 parameters {
 
   vector<lower=0>[fit_overall_scales == 1 ? M_units : 0] sigma_raw;
-  vector<lower=0>[tau_val > 0 ? 0 : 1] tau_param;
+  // One tau per unit. The error sd for unit n is tau[n] * sigma[n]; sigma is FIXED data (2 x RMS
+  // in ex1's stationary arms), so with a single global tau the noise is forced proportional to a
+  // unit's realised amplitude. In ex1's DGP every unit has the SAME absolute noise, so the tau the
+  // data wants varies across units by a CV of 0.63 -- the highest-amplitude unit wants ~0.07 where
+  // a typical one wants ~0.17. A scalar tau splits that difference and over-noises the large units.
+  // This frees the ERROR scale per unit without freeing the signal scale (sigma still multiplies
+  // Lambda_Phi), so it is a strictly smaller relaxation than estimating sigma.
+  vector<lower=0>[tau_val > 0 ? 0 : M_units] tau_param;
   vector<lower=0, upper=1>[factor_means == 1 ? 1 : 0] omega_sq_param;
 
   matrix[T_times, K_latent] Phi_innovations;
@@ -169,14 +176,14 @@ transformed parameters {
     Phi_means = rep_vector(0, K_latent);
   }
 
-  real<lower=0> tau;
+  vector<lower=0>[M_units] tau;
   if(tau_val > 0) {
-    tau = tau_val;
+    tau = rep_vector(tau_val, M_units);
   } else {
-    tau = tau_param[1];
+    tau = tau_param;
   }
 
-  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(tau * sigma));
+  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(tau .* sigma));
   if(nonstationary) {
     // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
@@ -283,11 +290,11 @@ generated quantities {
 
   if(nonstationary) {
     for(n in 1:M_units) {
-      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(tau * sigma[n]) * errors_cov));
+      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(tau[n] * sigma[n]) * errors_cov));
     }
   } else {
     for(n in 1:M_units) {
-      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(tau * sigma[n]) * errors_cov);
+      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(tau[n] * sigma[n]) * errors_cov);
     }
   }
 
@@ -342,7 +349,9 @@ generated quantities {
     row_vector[K_latent] Lambda_tr = Lambda[1,:];
     for(n in 2:M_units) {
       row_vector[K_latent] Lambda_un = Lambda[n,:];
-      cor_sq[n-1] = square(dot_product(Lambda_tr, Lambda_un)) / ((dot_self(Lambda_tr) + square(tau)) * (dot_self(Lambda_un) + square(tau)));
+      // Each unit contributes its OWN idiosyncratic variance now: tau[1] for the treated unit,
+      // tau[n] for the comparator.
+      cor_sq[n-1] = square(dot_product(Lambda_tr, Lambda_un)) / ((dot_self(Lambda_tr) + square(tau[1])) * (dot_self(Lambda_un) + square(tau[n])));
     }
   }
 
