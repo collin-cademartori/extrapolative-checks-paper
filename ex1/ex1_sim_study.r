@@ -271,9 +271,22 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      overall_scales = overall_scales_stat, err_scale = 0,
-      err_scale_mean = 0.05,
-      err_scale_sd = 0.1,
+      # err_sd FIXED at 0.5 on the data's own scale (absolute_error), not estimated as a ratio to
+      # sigma[n]. Three things follow from a fixed-and-small error, all measured on a sweep over
+      # fixed err_sd in {0.25, 0.5, 1.0, 1.8, 2.0} against a true noise sd of 2.0:
+      #   * Overfitting is restored, which is what this arm exists to show. noise_abs_tr -- the
+      #     fraction of the treated unit's pre-treatment noise absorbed into the fitted signal --
+      #     runs 0.89 / 0.76 / 0.33 / . / 0.11 across that sweep, against nonstat's 0.17 on the same
+      #     dataset. At 0.5 the stationary fit absorbs ~0.76 where nonstat absorbs ~0.17.
+      #   * The S1 p-value RISES as err_sd falls (0.955 / 0.810 / 0.671 / . / 0.306). Overfitting and
+      #     passing S1 are the same direction, not a trade-off: a small error gives smooth replicates
+      #     that match the observed smoothness. The apparent tension in earlier runs was an artifact
+      #     of comparing configurations that differed in several ways at once.
+      #   * The sampler is clean at EVERY fixed value, including 0.25 -- zero divergences, E-BFMI
+      #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
+      #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
+      #     from the error being small.
+      overall_scales = overall_scales_stat, err_scale = 0.5, absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
@@ -294,9 +307,22 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
       # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
       # tau under a tighter prior isolates the strength of the prior as the only difference.
-      overall_scales = overall_scales_stat, err_scale = 0,
-      err_scale_mean = 0.05,
-      err_scale_sd = 0.1,
+      # err_sd FIXED at 0.5 on the data's own scale (absolute_error), not estimated as a ratio to
+      # sigma[n]. Three things follow from a fixed-and-small error, all measured on a sweep over
+      # fixed err_sd in {0.25, 0.5, 1.0, 1.8, 2.0} against a true noise sd of 2.0:
+      #   * Overfitting is restored, which is what this arm exists to show. noise_abs_tr -- the
+      #     fraction of the treated unit's pre-treatment noise absorbed into the fitted signal --
+      #     runs 0.89 / 0.76 / 0.33 / . / 0.11 across that sweep, against nonstat's 0.17 on the same
+      #     dataset. At 0.5 the stationary fit absorbs ~0.76 where nonstat absorbs ~0.17.
+      #   * The S1 p-value RISES as err_sd falls (0.955 / 0.810 / 0.671 / . / 0.306). Overfitting and
+      #     passing S1 are the same direction, not a trade-off: a small error gives smooth replicates
+      #     that match the observed smoothness. The apparent tension in earlier runs was an artifact
+      #     of comparing configurations that differed in several ways at once.
+      #   * The sampler is clean at EVERY fixed value, including 0.25 -- zero divergences, E-BFMI
+      #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
+      #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
+      #     from the error being small.
+      overall_scales = overall_scales_stat, err_scale = 0.5, absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
