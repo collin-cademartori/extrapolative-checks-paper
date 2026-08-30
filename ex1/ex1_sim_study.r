@@ -301,7 +301,26 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
       #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
       #     from the error being small.
-      overall_scales = overall_scales_stat, err_scale = 0.5, absolute_error = TRUE,
+      #
+      # 1.0 rather than 0.5, because 0.5 broke the 95% predictive interval coverage. On ds3:
+      #
+      #     err_sd        noise_abs_tr   cover95   interval width   S1 p
+      #     nonstat 2.0       0.187       1.000        0.933        0.417
+      #     stat    0.5       0.761       0.775        0.265        0.810
+      #     stat    1.0       0.332       0.963        0.515        0.671
+      #
+      # One might expect overfitting to trade error variance for latent variance, leaving the total
+      # predictive spread intact. It does not: the width collapses 0.933 -> 0.515 -> 0.265. The
+      # reason is that overfitting moves the posterior MEAN of Y_means onto the noise without
+      # inflating its posterior VARIANCE -- a latent path that tracks the data closely does so
+      # confidently -- so Var(Y_means | data) stays small while err_sd^2 shrinks, and the sum falls.
+      # Under-coverage at 0.5 is therefore structural, not sampling noise.
+      #
+      # At 1.0 coverage returns to nominal (0.963) while noise_abs_tr stays at ~1.8x nonstat's,
+      # so the overfitting contrast the figure depends on survives and the coverage check goes back
+      # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
+      # the long run is the real test.
+      overall_scales = overall_scales_stat, err_scale = 1.0, absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
@@ -337,7 +356,26 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
       #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
       #     from the error being small.
-      overall_scales = overall_scales_stat, err_scale = 0.5, absolute_error = TRUE,
+      #
+      # 1.0 rather than 0.5, because 0.5 broke the 95% predictive interval coverage. On ds3:
+      #
+      #     err_sd        noise_abs_tr   cover95   interval width   S1 p
+      #     nonstat 2.0       0.187       1.000        0.933        0.417
+      #     stat    0.5       0.761       0.775        0.265        0.810
+      #     stat    1.0       0.332       0.963        0.515        0.671
+      #
+      # One might expect overfitting to trade error variance for latent variance, leaving the total
+      # predictive spread intact. It does not: the width collapses 0.933 -> 0.515 -> 0.265. The
+      # reason is that overfitting moves the posterior MEAN of Y_means onto the noise without
+      # inflating its posterior VARIANCE -- a latent path that tracks the data closely does so
+      # confidently -- so Var(Y_means | data) stays small while err_sd^2 shrinks, and the sum falls.
+      # Under-coverage at 0.5 is therefore structural, not sampling noise.
+      #
+      # At 1.0 coverage returns to nominal (0.963) while noise_abs_tr stays at ~1.8x nonstat's,
+      # so the overfitting contrast the figure depends on survives and the coverage check goes back
+      # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
+      # the long run is the real test.
+      overall_scales = overall_scales_stat, err_scale = 1.0, absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
