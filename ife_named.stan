@@ -70,6 +70,18 @@ data {
   real<lower=0> m_tau;
   real<lower=0> s_tau;
 
+  // How the observation error scale is parameterized.
+  //   0 (default, unchanged): err_sd[n] = tau[n] * sigma[n]. The error is a RATIO to each unit's
+  //     fixed scale, so it is forced proportional to that unit's amplitude.
+  //   1: err_sd[n] = eta, one ABSOLUTE scale shared by all units, with sigma[n] left to scale only
+  //     the signal. Use when the noise is believed homoscedastic on the data's own scale while the
+  //     units' amplitudes differ -- which is exactly ex1's DGP (sigma_data = 1, tau = 2, so every
+  //     unit has level-noise sd 2, while sample amplitudes differ by ~3.3x).
+  // In mode 1, m_tau / s_tau and a fixed tau_val are all read on the ABSOLUTE data scale, not as
+  // ratios. The caller is responsible for passing values on the right scale; nothing here can
+  // detect a ratio-scaled prior being handed to an absolute-scaled model.
+  int<lower=0, upper=1> absolute_error;
+
   // Shape for a zero-avoiding inverse-gamma prior on the loading diagonal. > 2 activates
   // it (finite second moment, so the unit-scale property is preserved); <= 2 falls back
   // to the default half-normal diagonal.
@@ -85,6 +97,10 @@ transformed data {
   }
 
   matrix[T_times, M_units] Y_outcome;
+  // 0 free error-scale parameters when tau is fixed; 1 in absolute mode (a shared eta); one per
+  // unit in ratio mode.
+  int n_err = (tau_val > 0) ? 0 : (absolute_error == 1 ? 1 : M_units);
+
   cov_matrix[T_times] errors_cov;
   cov_matrix[T_times] errors_precision;
 
@@ -129,14 +145,9 @@ transformed data {
 parameters {
 
   vector<lower=0>[fit_overall_scales == 1 ? M_units : 0] sigma_raw;
-  // One tau per unit. The error sd for unit n is tau[n] * sigma[n]; sigma is FIXED data (2 x RMS
-  // in ex1's stationary arms), so with a single global tau the noise is forced proportional to a
-  // unit's realised amplitude. In ex1's DGP every unit has the SAME absolute noise, so the tau the
-  // data wants varies across units by a CV of 0.63 -- the highest-amplitude unit wants ~0.07 where
-  // a typical one wants ~0.17. A scalar tau splits that difference and over-noises the large units.
-  // This frees the ERROR scale per unit without freeing the signal scale (sigma still multiplies
-  // Lambda_Phi), so it is a strictly smaller relaxation than estimating sigma.
-  vector<lower=0>[tau_val > 0 ? 0 : M_units] tau_param;
+  // The free error-scale parameter(s): length 0 when tau is fixed, 1 in absolute mode (a shared
+  // eta on the data's own scale), M_units in ratio mode (one tau per unit). See absolute_error.
+  vector<lower=0>[n_err] tau_param;
   vector<lower=0, upper=1>[factor_means == 1 ? 1 : 0] omega_sq_param;
 
   matrix[T_times, K_latent] Phi_innovations;
@@ -176,14 +187,22 @@ transformed parameters {
     Phi_means = rep_vector(0, K_latent);
   }
 
-  vector<lower=0>[M_units] tau;
+  // err_sd is the primitive -- the observation-error sd for each unit, on the data's own scale.
+  // tau is DERIVED from it as the ratio to that unit's fixed scale, which keeps tau's meaning
+  // ("noise relative to unit scale") identical in both modes. That matters for cor_sq below, whose
+  // denominator needs exactly (err_sd[n] / sigma[n])^2, and it keeps everything downstream that
+  // reads draws("tau") interpreting the same quantity.
+  vector<lower=0>[M_units] err_sd;
   if(tau_val > 0) {
-    tau = rep_vector(tau_val, M_units);
+    err_sd = absolute_error == 1 ? rep_vector(tau_val, M_units) : tau_val * sigma;
+  } else if(absolute_error == 1) {
+    err_sd = rep_vector(tau_param[1], M_units);
   } else {
-    tau = tau_param;
+    err_sd = tau_param .* sigma;
   }
+  vector<lower=0>[M_units] tau = err_sd ./ sigma;
 
-  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(tau .* sigma));
+  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(err_sd));
   if(nonstationary) {
     // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
@@ -290,11 +309,11 @@ generated quantities {
 
   if(nonstationary) {
     for(n in 1:M_units) {
-      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(tau[n] * sigma[n]) * errors_cov));
+      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(err_sd[n]) * errors_cov));
     }
   } else {
     for(n in 1:M_units) {
-      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(tau[n] * sigma[n]) * errors_cov);
+      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(err_sd[n]) * errors_cov);
     }
   }
 

@@ -48,7 +48,15 @@ pathfinder_inits <- function(mod, stat_data, n_chains, num_paths = NULL, draws =
     error = function(e) { warning("pathfinder failed: ", conditionMessage(e)); NULL })
   if (is.null(pf)) return(NULL)
 
-  present <- intersect(PF_PARAM_BASES, sub("\\[.*", "", posterior::variables(pf$draws())))
+  # pf$draws() must be guarded too, not just $pathfinder(). Pathfinder can return an object whose
+  # CSV was never written -- when every path fails, as happens if the initialization lands somewhere
+  # the likelihood is degenerate -- and then reading it throws from read_cmdstan_csv rather than
+  # returning an error object. Unguarded, that propagated out of sample_model and killed the fit
+  # instead of falling back to Stan's default init, which is the whole point of returning NULL here.
+  present <- tryCatch(
+    intersect(PF_PARAM_BASES, sub("\\[.*", "", posterior::variables(pf$draws()))),
+    error = function(e) { warning("pathfinder draws unreadable: ", conditionMessage(e)); NULL })
+  if (is.null(present)) return(NULL)
   dd <- tryCatch(as.data.frame(posterior::as_draws_df(pf$draws(c("lp__", present)))),
     error = function(e) { warning("pathfinder draw extraction failed: ", conditionMessage(e)); NULL })
   if (is.null(dd) || nrow(dd) == 0) return(NULL)
