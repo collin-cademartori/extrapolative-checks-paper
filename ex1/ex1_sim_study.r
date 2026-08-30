@@ -244,9 +244,24 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      overall_scales = overall_scales_nonstat, err_scale = 0,
-      err_scale_mean = 2,
-      err_scale_sd = 2,
+      # err_sd FIXED at 2.0 on the data's own scale, matching the stationary arms' parametrization so
+      # the ONLY difference between arms is the value, not how the error is expressed. The scales are
+      # directly comparable: errors_cov is built so err_sd^2 is the iid LEVEL-error variance in both
+      # the differenced and undifferenced branches, so err_sd means the same thing here as it does
+      # for the stationary fits. (sigma, which for this arm is sd(diff(y)), is on the differenced
+      # scale -- but sigma now scales only the SIGNAL.)
+      #
+      # 2.0 reproduces what the estimated ratio prior was already doing. tau ~ N(2, 2) against
+      # sigma = sd(diff(y)) implied err_sd of 1.77 and 1.61 on two test datasets, and fixing at 2.0
+      # gives noise_abs_tr 0.187 / 0.046 against the ratio version's 0.171 / 0.058, with S1
+      # p-values 0.417 / 0.577 against 0.431 / 0.704 -- within run-to-run variation. It also removes
+      # this arm's divergences (15 and 14 -> 1 and 0), which were the last ones left in ex1.
+      #
+      # It is also the DGP's true level-noise sd, so the correctly-specified arm is being handed the
+      # right value while the stationary arms are not. That is a deliberate choice for the reference
+      # arm and belongs in the write-up; fixing at 1.5 instead pushed noise_abs_tr to 0.324 / 0.115
+      # and started eroding the contrast this figure depends on.
+      overall_scales = overall_scales_nonstat, err_scale = 2.0, absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 8, autocor_b = 2,
       nonstationary = TRUE, num_treated = 5,
