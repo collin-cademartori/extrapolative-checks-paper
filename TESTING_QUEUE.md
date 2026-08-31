@@ -32,12 +32,24 @@ Two coherent positions:
 Either way the choice needs one sentence in the paper. Does not arise in ex2, whose DGP is a
 separate adversarial process that never touches `ife_named`'s priors.
 
-### A2. Re-separate ex1's `stat_weak` and `stat_strong` — **OPEN, blocks the merge**
+### A2. `stat_strong` is an experimental slot, not a paper arm — **RESOLVED 2026-08-30, needs renaming**
 
-The two stationary arms now produce nearly the same results, so the example no longer demonstrates
-the contrast it exists to show. Their only difference is the tau prior: `N(0.1, 0.1)` vs
-`N(0.05, 0.05)`. Expected to be a small change, but it is a *production* change to
-`ex1_sim_study.r`, so the merge should wait for it (see `MERGE_PLAN.md`, precondition 2).
+Superseded. Collin is leaning toward dropping `stat_strong` from the paper entirely, keeping it in
+the simulation code as a scratch slot for testing variations against `stat_weak`. Treat it as
+experimental: free to change or remove, and do NOT read intent from its name.
+
+The name is now actively misleading. The two stationary arms no longer differ in any prior — both
+sit at `err_scale = 1.0` fixed and absolute — and differ only in `K_latent` (K vs K + 1). So
+"stronger prior" describes nothing, and anything labelled weak-vs-strong is really K-vs-K+1.
+
+Consequences still open:
+  * `ex1_rsq_priors.r` contrasts four arms by prior strength (Nonstationary / Stronger / Weaker /
+    Vague). With the error scale fixed, its three stationary arms are identical and the figure is
+    degenerate. Flagged in place in that file with three ways out.
+  * If the paper drops the arm, `ex1_sim_study_summary.r`'s overfit plot goes from three labelled
+    points to two, and the `stat_strong_*` columns become internal-only.
+  * Renaming the arm (to something like `stat_alt`) would touch the study, the summary, and every
+    stored `.RData`, so it is worth doing once the paper's arm list is settled rather than now.
 
 ### A3. `K_latent` sensitivity — **TEST**
 
