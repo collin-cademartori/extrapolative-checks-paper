@@ -16,10 +16,23 @@ N_units <- 8
 T_times <- 20
 K_latent <- 4
 
+# SCALES AND ERROR MATCH ex1_sim_study EXACTLY. The study sets sigma from each dataset, so the
+# expected values are used here (measured over 200 prior-predictive datasets):
+#   stat    sigma = 2 x RMS(y)       -> E = 13.33 ;  err_sd = 1.0 fixed, absolute
+#   nonstat sigma = 1.2 x sd(diff y) -> E =  3.56 ;  err_sd = 2.0 fixed, absolute
+# absolute_error = TRUE means err_scale is the observation-error sd on the DATA's own scale, not a
+# ratio to sigma. Both studies moved to this; leaving these figures on the old estimated-ratio
+# parameterization would have them describe a model nobody fits.
+SIGMA_STAT    <- 13.33
+SIGMA_NONSTAT <-  3.56
+ERR_STAT      <-  1.0
+ERR_NONSTAT   <-  2.0
+
+
 stat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
-  overall_scales = 2 * rep(1, N_units), alpha_diag = 20,
-  err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
+  overall_scales = SIGMA_STAT * rep(1, N_units), alpha_diag = 20,
+  err_scale = ERR_STAT, absolute_error = TRUE,
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
@@ -38,8 +51,8 @@ ggsave(stat_plot_ppc, file = "../figs/ppc_stat_ns.pdf", device = "pdf", width = 
 
 nonstat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
-  overall_scales = 0.2 * rep(1, N_units), alpha_diag = 20,
-  err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
+  overall_scales = SIGMA_NONSTAT * rep(1, N_units), alpha_diag = 20,
+  err_scale = ERR_NONSTAT, absolute_error = TRUE,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,
@@ -58,8 +71,8 @@ ggsave(nonstat_plot_ppc, file = "../figs/ppc_nonstat.pdf", device = "pdf", width
 
 stat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
-  overall_scales = rep(1, N_units), alpha_diag = 20,
-  err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.1,
+  overall_scales = SIGMA_STAT * rep(1, N_units), alpha_diag = 20,
+  err_scale = ERR_STAT, absolute_error = TRUE,
   data = NULL,
   autocor_a = 97, autocor_b = 3,
   nonstationary = FALSE, num_treated = 0,
@@ -76,8 +89,8 @@ ggsave(stat_plot_ppc_long, file = "../figs/ppc_stat_long.pdf", device = "pdf", w
 
 nonstat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
-  overall_scales = rep(1, N_units), alpha_diag = 20,
-  err_scale = 0, err_scale_mean = 2, err_scale_sd = 2,
+  overall_scales = SIGMA_NONSTAT * rep(1, N_units), alpha_diag = 20,
+  err_scale = ERR_NONSTAT, absolute_error = TRUE,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,
