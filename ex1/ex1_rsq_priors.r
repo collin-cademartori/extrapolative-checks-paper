@@ -41,17 +41,17 @@ plot_prior_absr <- function(absrs) {
 # absolute_error = TRUE means err_scale is the observation-error sd on the DATA's own scale, not a
 # ratio to sigma. Both studies moved to this; leaving these figures on the old estimated-ratio
 # parameterization would have them describe a model nobody fits.
-SIGMA_STAT    <- 13.33
-SIGMA_NONSTAT <-  3.56
-ERR_STAT      <-  1.0
-ERR_NONSTAT   <-  2.0
+# SIGMA_STAT    <- 13.33
+# SIGMA_NONSTAT <-  3.56
+# ERR_STAT      <-  1.0
+# ERR_NONSTAT   <-  2.0
 
 overall_scales_stat <- rep(1, 8)
 overall_scales_nonstat <- rep(1, 8)
 
 nonstat_prior_data <- sample_model(
   overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
-  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
+  err_scale = 2 * (1/7) * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
   autocor_a = 7, autocor_b = 3,
   nonstationary = TRUE, num_treated = 0,
@@ -86,8 +86,8 @@ stat_prior_data1 <- sample_model(
 stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 weak_prior_data <- sample_model(
-  overall_scales = SIGMA_STAT * overall_scales_stat, alpha_diag = 20,
-  err_scale = ERR_STAT, absolute_error = TRUE,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  err_scale = 0.5 * mean(overall_scales_stat), absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,

@@ -23,10 +23,10 @@ K_latent <- 4
 # absolute_error = TRUE means err_scale is the observation-error sd on the DATA's own scale, not a
 # ratio to sigma. Both studies moved to this; leaving these figures on the old estimated-ratio
 # parameterization would have them describe a model nobody fits.
-SIGMA_STAT    <- 13.33
-SIGMA_NONSTAT <-  3.56
-ERR_STAT      <-  1.0
-ERR_NONSTAT   <-  2.0
+# SIGMA_STAT    <- 13.33
+# SIGMA_NONSTAT <-  3.56
+# ERR_STAT      <-  1.0
+# ERR_NONSTAT   <-  2.0
 
 overall_scales_stat <- rep(1, 8)
 overall_scales_nonstat <- rep(1, 8)
@@ -54,9 +54,9 @@ ggsave(stat_plot_ppc, file = "../figs/ppc_stat_ns.pdf", device = "pdf", width = 
 nonstat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
   overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
-  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
+  err_scale = 2 * (1/7) * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 8, autocor_b = 2,
+  autocor_a = 7, autocor_b = 3,
   nonstationary = TRUE, num_treated = 0,
   type = "prior_pred", iter = 1000, quiet = FALSE,
   seed = seed,
@@ -91,8 +91,8 @@ ggsave(stat_plot_ppc_long, file = "../figs/ppc_stat_long.pdf", device = "pdf", w
 
 nonstat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
- overall_scales = overall_scales_nonstat, alpha_diag = 20,
-  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
+ overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
+  err_scale = 2 * (1/7) * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,

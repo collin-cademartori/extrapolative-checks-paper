@@ -203,36 +203,10 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   true_ys_perm <- test_data$ys_latent[i, , perm]
   # Length of the treatment window; the three fits below all pass num_treated = this.
   num_treated_ex1 <- 5
-  # Prior scale for the stationary fits: a multiple of RMS(y), not sd(y).
-  #
-  # RMS rather than sd because these models have no intercept and no factor means, so the level of
-  # each series must be produced by the factors themselves; the second moment about zero is what the
-  # factors have to reproduce.
-  #
-  # The multiple corrects for the realised amplitude of a near-unit-root factor over a short window.
-  # The factors have unit LONG-RUN variance, but at rho ~ 0.97 over T = 20 a realised path's sample sd
-  # averages only ~0.38 (closed form: E[s^2] = [(T-1) - (2/T)*sum_k (T-k) rho^k] / (T-1)), because the
-  # sample mean absorbs the low-frequency wandering. Without the correction the factors cannot generate
-  # the observed excursion, the shortfall is booked as error, and tau is dragged far above its
-  # N(0.1, 0.1) prior -- at which point stat_weak mimics nonstat by inflating noise rather than by
-  # fitting structure, which is not the phenomenon the example is meant to show.
-  #
-  # Measured on these datasets: 1.0x -> tau 0.35 (0.7% prior tail, a clear contradiction);
-  # 1.5x -> 0.275 (3.7-7.1%); 2.0x -> 0.225 (12.8%, inside the bulk); 2.5x -> 0.186 with no further
-  # change in the overfitting or delta metrics. The prior predictive is consistent with this range
-  # (it centres on the observed sd at ~1.7x) but is too diffuse to discriminate on its own -- a
-  # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
-  # consistency of tau is what selects the multiple.
-  # stat_scale_multiple <- 2
-  # overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   overall_scales_stat <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
-  #overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, sd)
-  # For the nonstationary fit, sigma scales the *differenced* series (the model fits
-  # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
-  # be the wrong, inflating scale for integrated data.
-  # On the differenced scale, nonstat uses Beta(8,2) prior for rho. The downward bias on 
-  # realized SD is smaller but nonzero. The small 1.2x multiplier compensates.
-  overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
+  # overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
+  overall_scales_nonstat <- (1/7) * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
   # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
@@ -245,37 +219,12 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      # err_sd FIXED at 2.0 on the data's own scale, matching the stationary arms' parametrization so
-      # the ONLY difference between arms is the value, not how the error is expressed. The scales are
-      # directly comparable: errors_cov is built so err_sd^2 is the iid LEVEL-error variance in both
-      # the differenced and undifferenced branches, so err_sd means the same thing here as it does
-      # for the stationary fits. (sigma, which for this arm is sd(diff(y)), is on the differenced
-      # scale -- but sigma now scales only the SIGNAL.)
-      #
-      # 2.0 reproduces what the estimated ratio prior was already doing. tau ~ N(2, 2) against
-      # sigma = sd(diff(y)) implied err_sd of 1.77 and 1.61 on two test datasets, and fixing at 2.0
-      # gives noise_abs_tr 0.187 / 0.046 against the ratio version's 0.171 / 0.058, with S1
-      # p-values 0.417 / 0.577 against 0.431 / 0.704 -- within run-to-run variation. It also removes
-      # this arm's divergences (15 and 14 -> 1 and 0), which were the last ones left in ex1.
-      #
-      # It is also the DGP's true level-noise sd, so the correctly-specified arm is being handed the
-      # right value while the stationary arms are not. That is a deliberate choice for the reference
-      # arm and belongs in the write-up; fixing at 1.5 instead pushed noise_abs_tr to 0.324 / 0.115
-      # and started eroding the contrast this figure depends on.
-      overall_scales = 1.2 * overall_scales_nonstat, err_scale = 2.0 * mean(overall_scales_nonstat), absolute_error = TRUE,
+      overall_scales = overall_scales_nonstat, err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
       data = fit_ys,
       autocor_a = 7, autocor_b = 3,
       nonstationary = TRUE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
-      # iter = 2000, not 500. At 500 the nonstationary fit degrades sharply and starts escalating:
-      # across the two long runs, rhat_M median went 1.002 -> 1.008 and its maximum 1.003 -> 1.027,
-      # ess_delta1 median fell 4919 -> 1285, and the share of fits over rhat_M = 1.01 went from
-      # 0 of 21 to 13 of 71 (18%). Those escalations are largely INVISIBLE in progress.log -- a
-      # round-2 fit is only logged if it trips a threshold, and nonstat's rhat_loadings is small
-      # enough that a clean refit leaves no trace -- so the cost showed up as memory pressure rather
-      # than as log lines. Paying 4x on the base fit is cheaper than refitting a fifth of them at
-      # 8000, and it restores the arm to the near-pristine behaviour it had at 2000.
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
@@ -287,40 +236,6 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      # err_sd FIXED at 0.5 on the data's own scale (absolute_error), not estimated as a ratio to
-      # sigma[n]. Three things follow from a fixed-and-small error, all measured on a sweep over
-      # fixed err_sd in {0.25, 0.5, 1.0, 1.8, 2.0} against a true noise sd of 2.0:
-      #   * Overfitting is restored, which is what this arm exists to show. noise_abs_tr -- the
-      #     fraction of the treated unit's pre-treatment noise absorbed into the fitted signal --
-      #     runs 0.89 / 0.76 / 0.33 / . / 0.11 across that sweep, against nonstat's 0.17 on the same
-      #     dataset. At 0.5 the stationary fit absorbs ~0.76 where nonstat absorbs ~0.17.
-      #   * The S1 p-value RISES as err_sd falls (0.955 / 0.810 / 0.671 / . / 0.306). Overfitting and
-      #     passing S1 are the same direction, not a trade-off: a small error gives smooth replicates
-      #     that match the observed smoothness. The apparent tension in earlier runs was an artifact
-      #     of comparing configurations that differed in several ways at once.
-      #   * The sampler is clean at EVERY fixed value, including 0.25 -- zero divergences, E-BFMI
-      #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
-      #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
-      #     from the error being small.
-      #
-      # 1.0 rather than 0.5, because 0.5 broke the 95% predictive interval coverage. On ds3:
-      #
-      #     err_sd        noise_abs_tr   cover95   interval width   S1 p
-      #     nonstat 2.0       0.187       1.000        0.933        0.417
-      #     stat    0.5       0.761       0.775        0.265        0.810
-      #     stat    1.0       0.332       0.963        0.515        0.671
-      #
-      # One might expect overfitting to trade error variance for latent variance, leaving the total
-      # predictive spread intact. It does not: the width collapses 0.933 -> 0.515 -> 0.265. The
-      # reason is that overfitting moves the posterior MEAN of Y_means onto the noise without
-      # inflating its posterior VARIANCE -- a latent path that tracks the data closely does so
-      # confidently -- so Var(Y_means | data) stays small while err_sd^2 shrinks, and the sum falls.
-      # Under-coverage at 0.5 is therefore structural, not sampling noise.
-      #
-      # At 1.0 coverage returns to nominal (0.963) while noise_abs_tr stays at ~1.8x nonstat's,
-      # so the overfitting contrast the figure depends on survives and the coverage check goes back
-      # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
-      # the long run is the real test.
       overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
       err_scale_mean = 0.1 * mean(overall_scales_stat),
       err_scale_sd = 0.1 * mean(overall_scales_stat),
@@ -340,49 +255,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      # Stronger error prior: the same truncated-normal form as stat_weak, with the location and
-      # scale halved (0.1 -> 0.05). Previously tau was FIXED at 0.1, which made stat_strong differ
-      # from stat_weak in kind (no error-scale uncertainty at all) rather than in degree; estimating
-      # tau under a tighter prior isolates the strength of the prior as the only difference.
-      # err_sd FIXED at 0.5 on the data's own scale (absolute_error), not estimated as a ratio to
-      # sigma[n]. Three things follow from a fixed-and-small error, all measured on a sweep over
-      # fixed err_sd in {0.25, 0.5, 1.0, 1.8, 2.0} against a true noise sd of 2.0:
-      #   * Overfitting is restored, which is what this arm exists to show. noise_abs_tr -- the
-      #     fraction of the treated unit's pre-treatment noise absorbed into the fitted signal --
-      #     runs 0.89 / 0.76 / 0.33 / . / 0.11 across that sweep, against nonstat's 0.17 on the same
-      #     dataset. At 0.5 the stationary fit absorbs ~0.76 where nonstat absorbs ~0.17.
-      #   * The S1 p-value RISES as err_sd falls (0.955 / 0.810 / 0.671 / . / 0.306). Overfitting and
-      #     passing S1 are the same direction, not a trade-off: a small error gives smooth replicates
-      #     that match the observed smoothness. The apparent tension in earlier runs was an artifact
-      #     of comparing configurations that differed in several ways at once.
-      #   * The sampler is clean at EVERY fixed value, including 0.25 -- zero divergences, E-BFMI
-      #     0.74-0.95. The divergences that plagued the estimated-tau versions came from ESTIMATING
-      #     the error scale as eight per-unit taus, whose minimum wandered into a sharp region, not
-      #     from the error being small.
-      #
-      # 1.0 rather than 0.5, because 0.5 broke the 95% predictive interval coverage. On ds3:
-      #
-      #     err_sd        noise_abs_tr   cover95   interval width   S1 p
-      #     nonstat 2.0       0.187       1.000        0.933        0.417
-      #     stat    0.5       0.761       0.775        0.265        0.810
-      #     stat    1.0       0.332       0.963        0.515        0.671
-      #
-      # One might expect overfitting to trade error variance for latent variance, leaving the total
-      # predictive spread intact. It does not: the width collapses 0.933 -> 0.515 -> 0.265. The
-      # reason is that overfitting moves the posterior MEAN of Y_means onto the noise without
-      # inflating its posterior VARIANCE -- a latent path that tracks the data closely does so
-      # confidently -- so Var(Y_means | data) stays small while err_sd^2 shrinks, and the sum falls.
-      # Under-coverage at 0.5 is therefore structural, not sampling noise.
-      #
-      # At 1.0 coverage returns to nominal (0.963) while noise_abs_tr stays at ~1.8x nonstat's,
-      # so the overfitting contrast the figure depends on survives and the coverage check goes back
-      # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
-      # the long run is the real test.
       overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
       err_scale_mean = 0.05 * mean(overall_scales_stat),
       err_scale_sd = 0.05 * mean(overall_scales_stat),
       data = fit_ys,
-      autocor_a = 97, autocor_b = 3,
+      autocor_a = 98, autocor_b = 2,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
