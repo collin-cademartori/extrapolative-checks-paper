@@ -197,3 +197,50 @@ Never run under the ported escalation ladder, `alpha_diag = 20`, or `max_treedep
 
 Remote-only branch, no local checkout, never examined. Determine whether anything in it still
 matters before the merge.
+
+---
+
+## E. Bookmarked 2026-08-30: does extra K widen or narrow the overfitting gap?
+
+**TEST**, after we understand behaviour at the true K.
+
+Fitting more latent factors than the truth lowers the rank-k residual floor, which is the quantity
+coverage tracks (coverage holds when resid_sd / err_sd ~ 1). Measured over 200 datasets, true K = 4,
+true noise sd 2.0:
+
+| fitted k | best rank-k residual sd | vs rank-4 |
+|---|---|---|
+| 3 (K−1) | 1.312 | 126% |
+| 4 (true) | 1.045 | — |
+| 5 (K+1) | 0.801 | 77% |
+| 6 (K+2) | 0.567 | 54% |
+| 7 (K+3) | 0.340 | 33% |
+
+So K is a **second dial**, orthogonal to `err_sd`: extra factors create slack that lets `err_sd` go
+lower — more overfitting, higher S1 p — while keeping predictive coverage near nominal. k=6 would
+support roughly the `err_sd = 0.5` configuration with coverage intact instead of 0.775.
+
+**The open question:** if K rises for the STATIONARY arms, should it also rise for `nonstat`, and
+what happens to the overfitting gap between them?
+
+Collin's hypothesis: `nonstat` has a mitigation the stationary model lacks. It models the
+*increments*, so its fitted trajectory is an integrated process and far smoother than an AR(1) path
+at the level. Both arms overfit more as K grows, but the stationary arm should overfit more, and the
+gap may widen because the noise being absorbed is rough while the true factors are smooth.
+
+A sharper version of the same mechanism, which makes the "widens" prediction more likely: absorbing
+iid LEVEL noise requires strongly NEGATIVELY autocorrelated increments (alternating up-down). The
+nonstationary arm puts an AR(0.8) prior on its increments, which pushes toward POSITIVE
+autocorrelation — so its extra capacity is spent against a prior that actively resists the shape the
+absorption requires. The stationary arm faces no such obstruction: its factors need only level-scale
+wiggle, and AR(0.97) with unit marginal variance permits steps of ~0.24 in the factor, which times
+sigma ~8 is ~2 at the data scale — comparable to the noise sd of 2. So extra factors should buy the
+stationary arm much more absorption per factor than they buy `nonstat`.
+
+**Test:** sweep k in {4, 5, 6, 7} for both arms, holding `err_sd` fixed, and record `noise_abs_tr`,
+`pred_perc`, S1 p and the sampler diagnostics. Two things to watch: whether the `noise_abs_tr` gap
+widens or narrows, and whether `rhat_loadings` degrades — the K vs K+1 comparison over 22 paired
+datasets found no detectable difference, but K+2 and K+3 are extrapolation from that.
+
+If the gap widens, K becomes the more natural dial to lead with in the paper: fitting more factors
+than the truth is an ordinary modelling choice, whereas a hand-set error scale needs justifying.
