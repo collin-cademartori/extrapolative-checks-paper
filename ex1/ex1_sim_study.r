@@ -223,15 +223,16 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # (it centres on the observed sd at ~1.7x) but is too diffuse to discriminate on its own -- a
   # near-unit-root process has ~3.3x spread in realised sd even at FIXED rho, so the prior-posterior
   # consistency of tau is what selects the multiple.
-  stat_scale_multiple <- 2
-  overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+  # stat_scale_multiple <- 2
+  # overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+  overall_scales_stat <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   #overall_scales_stat <- stat_scale_multiple * apply(fit_ys, 2, sd)
   # For the nonstationary fit, sigma scales the *differenced* series (the model fits
   # on first-differences), so estimate its scale from sd(diff(y)) -- using sd(y) would
   # be the wrong, inflating scale for integrated data.
   # On the differenced scale, nonstat uses Beta(8,2) prior for rho. The downward bias on 
   # realized SD is smaller but nonzero. The small 1.2x multiplier compensates.
-  overall_scales_nonstat <- 1.2 * apply(fit_ys, 2, function(y) sd(diff(y)))
+  overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
   # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
@@ -261,9 +262,9 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # right value while the stationary arms are not. That is a deliberate choice for the reference
       # arm and belongs in the write-up; fixing at 1.5 instead pushed noise_abs_tr to 0.324 / 0.115
       # and started eroding the contrast this figure depends on.
-      overall_scales = overall_scales_nonstat, err_scale = 2.0, absolute_error = TRUE,
+      overall_scales = 1.2 * overall_scales_nonstat, err_scale = 2.0 * mean(overall_scales_nonstat), absolute_error = TRUE,
       data = fit_ys,
-      autocor_a = 8, autocor_b = 2,
+      autocor_a = 7, autocor_b = 3,
       nonstationary = TRUE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
@@ -320,9 +321,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # so the overfitting contrast the figure depends on survives and the coverage check goes back
       # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
       # the long run is the real test.
-      overall_scales = overall_scales_stat, err_scale = 1.0, absolute_error = TRUE,
+      overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = 0.1 * mean(overall_scales_stat),
+      err_scale_sd = 0.1 * mean(overall_scales_stat),
       data = fit_ys,
-      autocor_a = 97, autocor_b = 3,
+      autocor_a = 98, autocor_b = 2,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
@@ -375,12 +378,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # so the overfitting contrast the figure depends on survives and the coverage check goes back
       # to being unable to discriminate -- which is what Section 5 needs. Measured on ONE dataset;
       # the long run is the real test.
-      overall_scales = overall_scales_stat, err_scale = 1.0, absolute_error = TRUE,
+      overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = 0.05 * mean(overall_scales_stat),
+      err_scale_sd = 0.05 * mean(overall_scales_stat),
       data = fit_ys,
       autocor_a = 97, autocor_b = 3,
       nonstationary = FALSE, num_treated = 5,
       fit_scales = FALSE,
-      type = "posterior", K_latent = K_latent + 1, ad = 0.8,
+      type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),

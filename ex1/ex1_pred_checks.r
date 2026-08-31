@@ -28,20 +28,22 @@ SIGMA_NONSTAT <-  3.56
 ERR_STAT      <-  1.0
 ERR_NONSTAT   <-  2.0
 
+overall_scales_stat <- rep(1, 8)
+overall_scales_nonstat <- rep(1, 8)
 
 stat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
-  overall_scales = SIGMA_STAT * rep(1, N_units), alpha_diag = 20,
-  err_scale = ERR_STAT, absolute_error = TRUE,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  err_scale = 0.1 * mean(overall_scales_stat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 97, autocor_b = 3,
+  autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
   type = "prior_pred", K_latent = K_latent,
   seed = seed, quiet = FALSE,
   parallel_chains = 4
 )
 
-cat(paste0("P(SD > 1): ", mean(apply(stat_prior_data$ys[, , 1], 1, sd) > 1), "\n"))
+cat(paste0("E(SD): ", mean(apply(stat_prior_data$ys[, , 1], 1, sd)), "\n"))
 
 stat_plot_ppc <- plot_data_units(
   stat_prior_data,
@@ -51,8 +53,8 @@ ggsave(stat_plot_ppc, file = "../figs/ppc_stat_ns.pdf", device = "pdf", width = 
 
 nonstat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
-  overall_scales = SIGMA_NONSTAT * rep(1, N_units), alpha_diag = 20,
-  err_scale = ERR_NONSTAT, absolute_error = TRUE,
+  overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
+  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,
@@ -61,7 +63,7 @@ nonstat_prior_data <- sample_model(
   parallel_chains = 4
 )
 
-cat(paste0("P(SD > 1): ", mean(apply(nonstat_prior_data$ys[, , 1], 1, sd) > 1), "\n"))
+cat(paste0("E(SD): ", mean(apply(nonstat_prior_data$ys[, , 1], 1, sd)), "\n"))
 
 nonstat_plot_ppc <- plot_data_units(
   nonstat_prior_data,
@@ -71,10 +73,10 @@ ggsave(nonstat_plot_ppc, file = "../figs/ppc_nonstat.pdf", device = "pdf", width
 
 stat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
-  overall_scales = SIGMA_STAT * rep(1, N_units), alpha_diag = 20,
-  err_scale = ERR_STAT, absolute_error = TRUE,
+ overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  err_scale = 0.1 * mean(overall_scales_stat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 97, autocor_b = 3,
+  autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
   type = "prior_pred", iter = 1000, quiet = FALSE,
   seed = seed,
@@ -89,8 +91,8 @@ ggsave(stat_plot_ppc_long, file = "../figs/ppc_stat_long.pdf", device = "pdf", w
 
 nonstat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
-  overall_scales = SIGMA_NONSTAT * rep(1, N_units), alpha_diag = 20,
-  err_scale = ERR_NONSTAT, absolute_error = TRUE,
+ overall_scales = overall_scales_nonstat, alpha_diag = 20,
+  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
   autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,

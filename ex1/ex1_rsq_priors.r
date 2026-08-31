@@ -50,10 +50,10 @@ overall_scales_stat <- rep(1, 8)
 overall_scales_nonstat <- rep(1, 8)
 
 nonstat_prior_data <- sample_model(
-  overall_scales = SIGMA_NONSTAT * overall_scales_nonstat, alpha_diag = 20,
-  err_scale = ERR_NONSTAT, absolute_error = TRUE,
+  overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
+  err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 8, autocor_b = 2,
+  autocor_a = 7, autocor_b = 3,
   nonstationary = TRUE, num_treated = 0,
   type = "prior_pred", K_latent = 4, iter = 6000,
   n_chains = 1
@@ -62,10 +62,10 @@ nonstat_prior_data <- sample_model(
 nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data <- sample_model(
-  overall_scales = SIGMA_STAT * overall_scales_stat, alpha_diag = 20,
-  err_scale = ERR_STAT, absolute_error = TRUE,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  err_scale = 0.1 * mean(overall_scales_stat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 97, autocor_b = 3,
+  autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
   type = "prior_pred", K_latent = 4, iter = 6000,
   n_chains = 1
@@ -74,10 +74,10 @@ stat_prior_data <- sample_model(
 stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data1 <- sample_model(
-  overall_scales = SIGMA_STAT * overall_scales_stat, alpha_diag = 20,
-  err_scale = ERR_STAT, absolute_error = TRUE,
+  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
+  err_scale = 0.05 * mean(overall_scales_stat), absolute_error = TRUE,
   data = NULL,
-  autocor_a = 97, autocor_b = 3,
+  autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
   type = "prior_pred", K_latent = 4, iter = 6000,
   n_chains = 1
@@ -89,7 +89,7 @@ weak_prior_data <- sample_model(
   overall_scales = SIGMA_STAT * overall_scales_stat, alpha_diag = 20,
   err_scale = ERR_STAT, absolute_error = TRUE,
   data = NULL,
-  autocor_a = 97, autocor_b = 3,
+  autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
   type = "prior_pred", K_latent = 4, iter = 6000,
   n_chains = 1
