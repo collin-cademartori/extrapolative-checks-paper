@@ -34,26 +34,43 @@ plot_prior_absr <- function(absrs) {
   return(prior_plot)
 }
 
-# SCALES AND ERROR MATCH ex1_sim_study EXACTLY. The study sets sigma from each dataset, so the
-# expected values are used here (measured over 200 prior-predictive datasets):
-#   stat    sigma = 2 x RMS(y)       -> E = 13.33 ;  err_sd = 1.0 fixed, absolute
-#   nonstat sigma = 1.2 x sd(diff y) -> E =  3.56 ;  err_sd = 2.0 fixed, absolute
+# SCALES AND ERROR MATCH ex1_sim_study. Same names, same multiples -- see the long comment in
+# ex1_sim_study.r for what each constant is and why it takes the value it does.
+#
+# The study anchors every scale on RMS(y_n), measured from each dataset. This file has no dataset to
+# measure, so it works in units where RMS(y) = 1 and carries the study's multiples unchanged. What
+# this figure shows -- |cor(y, t)| -- is scale invariant, so the choice of unit does not enter it.
+#
 # absolute_error = TRUE means err_scale is the observation-error sd on the DATA's own scale, not a
-# ratio to sigma. Both studies moved to this; leaving these figures on the old estimated-ratio
-# parameterization would have them describe a model nobody fits.
-# SIGMA_STAT    <- 13.33
-# SIGMA_NONSTAT <-  3.56
-# ERR_STAT      <-  1.0
-# ERR_NONSTAT   <-  2.0
+# ratio to sigma, and it is the LEVEL error sd in both the stationary and the differenced branch
+# (ife_named.stan applies the sqrt(2) differencing inflation itself). So the ETA_FRAC_* constants
+# below take no differencing correction, and a caller-side one would double-count.
+#
+# The four panels are a ladder in ETA_FRAC alone -- 0.286 / 0.100 / 0.050 / 0.500 as a fraction of
+# RMS(y) -- which is the point of the figure: a large error attenuates a linear trend, so only a
+# small one lets a stationary model put enough prior mass on high |cor(y, t)| to be plausible for
+# these data. The stationary arms' sigma is held fixed across the ladder so the error scale is the
+# only thing that moves.
+rms_y <- rep(1, 8)
 
-overall_scales_stat <- rep(1, 8)
-overall_scales_nonstat <- rep(1, 8)
+SIGMA_MULT_NONSTAT <- 1 / 7
+SIGMA_MULT_STAT    <- 2
+ETA_FRAC_NONSTAT   <- 2 * SIGMA_MULT_NONSTAT   # 2 x sigma_nonstat, i.e. the DGP's true error sd
+ETA_FRAC_WEAK      <- 0.1
+ETA_FRAC_STRONG    <- 0.05
+ETA_FRAC_VAGUE     <- 0.5    # this file only: the deliberately loose comparison arm
+
+# Both variables ARE sigma -- the vector the model receives -- so no call site has to remember which
+# multiple was applied where. The error scales read from eta_anchor, never from these.
+overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
+overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
+eta_anchor <- mean(rms_y)
 
 nonstat_prior_data <- sample_model(
-  overall_scales = (1/7) * overall_scales_nonstat, alpha_diag = 20,
-  err_scale = 2 * (1/7) * mean(overall_scales_nonstat), absolute_error = TRUE,
+  overall_scales = overall_scales_nonstat, alpha_diag = 20,
+  err_scale = ETA_FRAC_NONSTAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
-  autocor_a = 7, autocor_b = 3,
+  autocor_a = 8, autocor_b = 2,
   nonstationary = TRUE, num_treated = 0,
   type = "prior_pred", K_latent = 4, iter = 6000,
   n_chains = 1
@@ -62,8 +79,8 @@ nonstat_prior_data <- sample_model(
 nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data <- sample_model(
-  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
-  err_scale = 0.1 * mean(overall_scales_stat), absolute_error = TRUE,
+  overall_scales = overall_scales_stat, alpha_diag = 20,
+  err_scale = ETA_FRAC_WEAK * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
@@ -74,8 +91,8 @@ stat_prior_data <- sample_model(
 stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 stat_prior_data1 <- sample_model(
-  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
-  err_scale = 0.05 * mean(overall_scales_stat), absolute_error = TRUE,
+  overall_scales = overall_scales_stat, alpha_diag = 20,
+  err_scale = ETA_FRAC_STRONG * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
@@ -86,8 +103,8 @@ stat_prior_data1 <- sample_model(
 stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
 weak_prior_data <- sample_model(
-  overall_scales = 2 * overall_scales_stat, alpha_diag = 20,
-  err_scale = 0.5 * mean(overall_scales_stat), absolute_error = TRUE,
+  overall_scales = overall_scales_stat, alpha_diag = 20,
+  err_scale = ETA_FRAC_VAGUE * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
@@ -97,15 +114,17 @@ weak_prior_data <- sample_model(
 
 weak_absr <- apply(weak_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-# WARNING -- this figure's premise no longer matches ex1_sim_study. It contrasts three STRENGTHS of
-# prior on the error scale, but the study now FIXES the error scale (err_sd = 1.0, absolute) for both
-# stationary arms, which differ only in K_latent (K vs K + 1). Matching the study therefore makes the
-# three stationary arms below identical, and the figure degenerate. Three ways out, all decisions for
-# the paper rather than the code:
-#   (a) contrast K_latent 4 vs 5, mirroring the study -- but then it is not a prior-strength figure;
-#   (b) keep it a prior-strength figure by varying err_sd (0.5 / 1.0 / 2.0), illustrating the dial
-#       even though the study fixes it at 1.0 -- honest only if labelled as an illustration;
-#   (c) drop it, if the paper no longer makes a prior-strength claim for ex1.
+# The two middle panels are the study's two stationary arms exactly: ETA_FRAC_WEAK = 0.1 is
+# stat_weak, ETA_FRAC_STRONG = 0.05 is stat_strong, and the study's arms now differ in nothing else
+# (same K_latent, same rho prior), so this figure and the study are showing the same contrast. The
+# Vague panel at 0.5 is not a study arm -- it is the illustrative upper rung, included to show where
+# the ladder ends up when the error is allowed to be large.
+#
+# One difference from the study remains, and it is deliberate: the study ESTIMATES eta under
+# TruncNormal(ETA_FRAC * eta_anchor, ETA_FRAC * eta_anchor) while these panels FIX it at the prior
+# location. Measured, the difference is negligible -- mean|r| 0.565 fixed against 0.555 estimated,
+# P(|r| > 0.8) 0.269 against 0.252 -- because at eta this small against sigma = 2 the error barely
+# moves the statistic either way. Fixing keeps each panel a statement about one number.
 absrs <- list(
   `Nonstationary` = nonstat_absr,
   `Stronger Prior` = stat_strong_absr,

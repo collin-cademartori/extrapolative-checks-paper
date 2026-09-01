@@ -11,7 +11,7 @@ sample_model <- function(
     data = NULL, overall_scales = NULL, fit_scales = NULL, err_scale = 0.05,
     err_scale_mean = 0, err_scale_sd = 0,
     autocor_a, autocor_b, alpha_diag = 0, nonstationary, absolute_error = FALSE, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
-    num_treated, type = "prior_pred",
+    num_treated, delta_scale = 0, type = "prior_pred",
     iter = 1000, iter_warm = NULL, quiet = TRUE, 
     ad = 0.98, max_treedepth = 10, n_chains = 4, parallel_chains = 1,
     seed = NULL, log_file = NULL, log_label = NULL,
@@ -49,10 +49,26 @@ sample_model <- function(
     on.exit(unlink(out_dir, recursive = TRUE, force = TRUE), add = TRUE)
   }
 
-  # Draw the shuffle index *before* $sample(): cmdstanr's $sample() advances R's
-  # global RNG, so drawing it afterward would make the draw ordering
-  # irreproducible. Invariant: this must precede the fit.
-  sample_index <- sample.int(iter, size = iter)
+  # The returned draws are shuffled, so that consecutive datasets do not come from the same chain
+  # (CmdStan writes draws chain-major). Two constraints on where that index comes from:
+  #   * It must be drawn *before* $sample(): cmdstanr's $sample() advances R's global RNG, so
+  #     drawing it afterward would make the ordering irreproducible. This must precede the fit.
+  #   * It is drawn from this call's own `seed`, not from R's global stream. Under the global
+  #     stream the ordering depended on how much RNG every earlier line happened to consume, so
+  #     inserting any sample()/rnorm() anywhere upstream silently renumbered the datasets -- and a
+  #     study that indexes datasets by position (ex1_sim_study.r's study_units) would then be
+  #     fitting different data with no visible change. The global stream is saved and restored
+  #     around the draw so callers that rely on it are unaffected.
+  sample_index <- if (is.null(seed)) {
+    sample.int(iter, size = iter)
+  } else {
+    have_state <- exists(".Random.seed", envir = globalenv())
+    old_state <- if (have_state) get(".Random.seed", envir = globalenv()) else NULL
+    set.seed(seed)
+    idx <- sample.int(iter, size = iter)
+    if (have_state) assign(".Random.seed", old_state, envir = globalenv())
+    idx
+  }
 
   stat_data <- list(
     M_units = N_units,
@@ -81,7 +97,11 @@ sample_model <- function(
     # single absolute eta shared by all units. In absolute mode err_scale / err_scale_mean /
     # err_scale_sd are read on the DATA's scale, not as ratios -- the caller must pass values on the
     # right scale, and nothing can detect the mistake if they do not.
-    absolute_error = as.integer(absolute_error)
+    absolute_error = as.integer(absolute_error),
+    # Prior scale for the treatment effect, on the data's own scale. 0 = inherit sigma[1], the
+    # historical behaviour. Pass a common positive value across arms being compared so they share a
+    # prior on the estimand; see the note in ife_named.stan's data block.
+    delta_scale = delta_scale
   )
 
   # Fallback init for ABSOLUTE mode. eta lives on the data's own scale (order 2 here), but Stan's

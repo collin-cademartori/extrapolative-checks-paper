@@ -37,8 +37,9 @@ if ("failed" %in% names(sim_study_stat)) {
 sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error")))
 
 # Numeric-only results (the standardized-error curves and overfit trade-off are
-# shown in the plots below): 99% posterior-predictive interval coverage -- at
-# least 99% for every model, so the check cannot rule out the misspecified model
+# shown in the plots below): 95% posterior-predictive interval coverage -- the
+# nominal level is met or exceeded by every model, so the check cannot rule out
+# the misspecified model
 # (paper Section 5) -- and the S1 time-correlation predictive p-value, averaged
 # over the study for each model.
 
@@ -55,7 +56,7 @@ perc_summary <- sim_study_stat |>
     mean_perc_stat_strong = mean(stat_strong_pred_perc),
   )
 
-cat("\nPer-model 99% interval coverage:\n")
+cat("\nPer-model 95% interval coverage:\n")
 print(as_tibble(perc_summary), width = Inf)
 
 pval_summary <- sim_study_stat |>

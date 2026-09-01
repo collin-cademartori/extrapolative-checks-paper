@@ -82,6 +82,18 @@ data {
   // detect a ratio-scaled prior being handed to an absolute-scaled model.
   int<lower=0, upper=1> absolute_error;
 
+  // Prior scale for the treatment effect, on the DATA's own scale. 0 keeps the historical
+  // behaviour, in which the effect prior inherited the treated unit's sigma[1].
+  //
+  // Why it is separable: sigma does NOT denote the same quantity across the models being compared.
+  // In the nonstationary branch it scales the DIFFERENCED signal; in the stationary branch it is
+  // the long-run marginal SD of the level. Tying the effect prior to it therefore gives the arms
+  // priors on the ESTIMAND that differ by an order of magnitude (measured on ex1: 1.00 for the
+  // nonstationary arm against 14.05 for the stationary arms, a 14x gap) -- and since that study's
+  // true effect is exactly zero, the tighter prior shrinks toward the truth for free. Whatever the
+  // arms are meant to differ in, it is not their prior over the quantity being estimated.
+  real<lower=0> delta_scale;
+
   // Shape for a zero-avoiding inverse-gamma prior on the loading diagonal. > 2 activates
   // it (finite second moment, so the unit-scale property is preserved); <= 2 falls back
   // to the default half-normal diagonal.
@@ -292,7 +304,11 @@ model {
   Phi_means_param ~ std_normal();
 
   if(num_treated > 0) {
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), inv(omega_sq * square(sigma[1])) * effects_prec);
+    // delta_scale is read as an ABSOLUTE scale when supplied, so it is not further modified by
+    // omega_sq: a caller passing a common value across arms means those arms to have the same
+    // effect prior, and omega_sq differs between them (it is 1 unless factor_means is on).
+    real d_scale = delta_scale > 0 ? delta_scale : sqrt(omega_sq) * sigma[1];
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), inv(square(d_scale)) * effects_prec);
   }
 
   if(sample_posterior) {

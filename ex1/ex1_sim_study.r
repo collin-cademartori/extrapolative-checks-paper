@@ -188,10 +188,13 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   T_times <- nrow(test_ys)
 
   # Anchor-order the columns before fitting, exactly as ex2 does. Two ex1-specific points:
-  #   * The permutation is computed at K_latent + 1, the LARGEST K any arm fits (the two stationary
-  #     arms use K_latent + 1; nonstat uses K_latent). anchor_order's selection is greedy, hence
-  #     prefix-consistent -- anchor_order(y, 5)[1:4] equals anchor_order(y, 4)[1:4] -- so one
-  #     permutation serves both arms and the leading block is full rank for each.
+  #   * The permutation is computed at K_latent + 1, one more than any arm now fits -- all three
+  #     use K_latent. That is deliberate slack, not a leftover: anchor_order's selection is greedy
+  #     and therefore prefix-consistent (anchor_order(y, 5)[1:4] equals anchor_order(y, 4)[1:4]),
+  #     so asking for one extra leaves the leading K_latent block exactly as it would have been
+  #     while keeping the ordering stable if an arm is ever moved back to K_latent + 1. Changing
+  #     the argument would change the permutation and hence every fitted dataset, so it is left
+  #     as is.
   #   * perm[1] == 1 by construction, so the treated unit stays in column 1. Everything downstream
   #     that indexes the treated unit by position (noise_abs_tr, delta) is therefore unaffected;
   #     the stopifnot makes that dependency explicit rather than implicit.
@@ -201,11 +204,120 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # The DGP's latent signal is permuted alongside, so it stays column-aligned with the fit output
   # that noise_abs_tr compares it against.
   true_ys_perm <- test_data$ys_latent[i, , perm]
-  # Length of the treatment window; the three fits below all pass num_treated = this.
+  # Length of the treatment window. The three fits below pass this, and noise_abs_tr's pre_times
+  # is T_times minus this, so the overfitting measurement window and the fitted treatment window
+  # cannot drift apart. They used to: the fits hard-coded 5 while pre_times read this variable.
   num_treated_ex1 <- 5
-  overall_scales_stat <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
-  # overall_scales_nonstat <- apply(fit_ys, 2, function(y) sd(diff(y)))
-  overall_scales_nonstat <- (1/7) * apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+  # ---- scales -------------------------------------------------------------------------------
+  # Every scale constant below is a fraction of ONE anchor, RMS(y_n). RMS rather than sd(y) because
+  # these models have no intercept and no factor means, so the level of each series must be produced
+  # by the factors themselves; the second moment about zero is what they have to reproduce. RMS
+  # rather than sd(diff(y)) because sd(diff(y)) is 93% observation error by variance in this DGP
+  # (mean sd(diff SIGNAL) = 0.67 against mean sd(diff OBSERVED) = 2.94, the iid level error alone
+  # contributing sqrt(2)*eta = 2.83) -- it measures eta, not sigma. RMS is the other way round, 86%
+  # signal by variance, which is why it can anchor both arms.
+  #
+  # One anchor means the four constants are directly comparable, to each other and to the truth:
+  #
+  #     arm            sigma        eta / RMS(y)
+  #     truth (DGP)    RMS/6.8         0.295
+  #     nonstat        RMS/7           0.286    fixed
+  #     stat_weak      2*RMS           0.100    estimated
+  #     stat_strong    2*RMS           0.050    estimated
+  #
+  # That table is the mechanism this example demonstrates. The stationary arms are handed an error
+  # ~3x and ~6x smaller than the truth, and that single number does both jobs: it is what produces
+  # the overfitting, and it is what the prior predictive check on |cor(y, t)| requires, since a large
+  # error attenuates a linear trend and only a small one lets a stationary model look nonstationary
+  # enough to be plausible. The example is exactly that trade-off -- under a wrong model, a prior
+  # that survives its own predictive check is a prior that overfits.
+  #
+  # The two SIGMA multiples are different KINDS of constant and will break differently:
+  #   * SIGMA_MULT_NONSTAT is a units conversion. In the nonstationary branch sigma denotes the
+  #     scale of the DIFFERENCED signal (Y_means_0 = sigma * Lambda_Phi, then cumulative_sum), so
+  #     an anchor measured on the level has to be converted, and integrating a T = 20 window costs
+  #     roughly an order of magnitude. It is the self-consistency fixed point: generate at
+  #     sigma = RMS/7 and the prior predictive gives that RMS back (derived to -0.4% by
+  #     ex1_derive_scales.r -- run it to see where the number comes from). It moves with T and with
+  #     K_latent, and is nearly inert to the error size: the required multiple runs 1/6.5, 1/6.6,
+  #     1/7.0, 1/8.0 as err_sd goes 0.5, 1, 2, 4.
+  #
+  #     This arm shares the DGP's rho prior, Beta(8, 2), so the fixed point does double duty: the
+  #     multiple that reproduces the observed RMS also hands the arm the DGP's own sigma and eta,
+  #     1.00 and 2.00. That is the reference arm being handed the truth -- deliberate, and it
+  #     belongs in the write-up. Were the two priors allowed to diverge the criteria would separate
+  #     (at Beta(7, 3) self-consistency gives 1/6.2, about 10% above the truth) and the derivation
+  #     would have to say which one it solves.
+  #   * SIGMA_MULT_STAT is NOT a conversion either, but for a different reason: under this
+  #     misspecification there is no multiple that matches the data's RMS and its SD at once, so it
+  #     chooses which to match. The two fixed points are far apart -- sigma = 1.28 * RMS reproduces
+  #     the observed RMS, sigma = 2.02 * RMS reproduces the observed SD -- because a near-unit-root
+  #     AR(1) realises far less dispersion over a short window than its long-run marginal sd: at
+  #     T = 20 the closed form E[s^2] = [(T-1) - (2/T) sum_k (T-k) rho^k] / (T-1) gives E[s]/sigma_lr
+  #     = 0.429 at rho = 0.97, and 0.333 averaged over rho ~ Beta(98, 2).
+  #
+  #     Matching the SD is the conservative choice, and that is why the code uses 2. The SD is what
+  #     controls how far the fitted factors can wiggle with the error term, so it is the quantity
+  #     that governs the overfitting this arm exists to exhibit. At 2.0x the prior predictive
+  #     reproduces the data's SD to 99% (4.13 against 4.18) while exceeding its RMS by 1.57x --
+  #     a prior that can reach the truth and then some. At the RMS fixed point it would instead
+  #     reach only 60% of the data's SD (2.52 against 4.18), PROHIBITING the realised dispersion the
+  #     data actually show. Overshooting a moment is a weak assumption; excluding one is a strong
+  #     assumption made silently.
+  #
+  #     This is a prior-only argument and needs no posterior evidence, but the posterior agrees:
+  #     at 1.0x the error-scale posterior landed in the 0.7% tail of its own prior (a clear
+  #     prior-data conflict), at 1.5x the 3.7-7.1% tail, at 2.0x near 13% -- inside the bulk, with
+  #     no further movement in the overfitting or delta metrics by 2.5x. Without the correction the
+  #     factors cannot generate the observed excursion, the shortfall is booked as error, and
+  #     stat_weak mimics nonstat by inflating noise rather than by fitting structure -- which is not
+  #     the phenomenon this example is meant to show.
+  #
+  # ETA_FRAC_NONSTAT is the DGP's own level-error sd (2.0 against an innovation scale of 1.0), so
+  # the correctly specified arm is handed the truth while the stationary arms are not. That is a
+  # deliberate choice for the reference arm and belongs in the write-up.
+  #
+  # eta is on the LEVEL scale in BOTH branches: ife_named.stan applies the sqrt(2) differencing
+  # inflation itself (errors_cov is normalized by 2v and error_precisions is halved), so these
+  # fractions take no differencing correction and a caller-side one would double-count. An earlier
+  # revision anchored the nonstationary arm on sd(diff(y)) instead, which silently multiplied both
+  # its sigma and its eta by ~3; the reference arm then failed its own S1 check (p = 0.018 / 0.000 /
+  # 0.001 on three datasets, against 0.944 / 0.232 / 0.807 here) with 95% predictive intervals
+  # 200-260% of the observed data range. Hence the single anchor, and hence this comment.
+  rms_y <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
+  sd_y <- apply(fit_ys, 2, sd)
+
+  SIGMA_MULT_NONSTAT <- 1 / 7
+  SIGMA_MULT_STAT    <- 2
+  ETA_FRAC_NONSTAT   <- 2 * SIGMA_MULT_NONSTAT   # 2 x sigma_nonstat, i.e. the DGP's true error sd
+  ETA_FRAC_WEAK      <- 0.2
+  # Default FALSE: the nonstationary arm ESTIMATES eta like the stationary arms. See the note at
+  # its fit below for why, and what setting this changes.
+  NONSTAT_FIX_ETA <- nzchar(Sys.getenv("NONSTAT_FIX_ETA"))
+  ETA_FRAC_STRONG <- 0.05
+
+  # Prior scale for the treatment effect, SHARED by all three arms so they differ in their model of
+  # the DATA, not in their prior over the ESTIMAND. Each arm used to inherit its own sigma[1], which
+  # is not a common scale -- sigma denotes the differenced innovation scale in the nonstationary
+  # branch and the long-run marginal SD in the stationary one. Measured on this DGP that gave the
+  # nonstationary arm 1.00 against the stationary arms' 14.05, a 14x gap on the very quantity the
+  # study compares them on; and since the true effect here is exactly zero, the tighter prior shrank
+  # the nonstationary arm toward the truth for free.
+  #
+  # Anchored on mean sd(y_n), not RMS: an effect is a CHANGE in the series, so the yardstick is how
+  # much a typical unit moves, not how far it sits from zero. DELTA_FRAC = 1 reads as "the effect
+  # could plausibly be as large as a typical unit's temporal variation" -- weakly informative, easy
+  # to state, and it lands between the two values it replaces.
+  DELTA_FRAC <- 1.0
+
+  # Both variables ARE sigma -- the vector the model receives -- so no call site has to remember
+  # which multiple was applied where. The error scales read from rms_y, never from these; keeping
+  # the two apart is what makes "eta is a fraction of the data scale" true as written rather than
+  # true of one arm and not the other.
+  overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
+  overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
+  eta_anchor <- mean(rms_y)
+  delta_scale_ex1 <- DELTA_FRAC * mean(sd_y)
 
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
@@ -219,10 +331,35 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      overall_scales = overall_scales_nonstat, err_scale = 2 * mean(overall_scales_nonstat), absolute_error = TRUE,
+      # eta is ESTIMATED here, as it is for the stationary arms, under the same truncated-normal
+      # form (location = scale) located at ETA_FRAC_NONSTAT * eta_anchor. Two reasons.
+      #
+      # First, fairness: this arm used to be handed a fixed error scale while the stationary arms
+      # had to estimate theirs, so part of the contrast between them was fixed-vs-estimated rather
+      # than stationary-vs-not. Estimating everywhere makes the comparison about stationarity
+      # alone, which is what the example claims to be about.
+      #
+      # Second, and less obviously, the fixed version was NOT fixed at the truth. It was fixed at
+      # ETA_FRAC_NONSTAT * mean(RMS(y_n)), which equals the DGP's err_sd = 2.0 only ON AVERAGE;
+      # per dataset it followed the realised RMS. Measured over six datasets it ran 3.81 / 2.92 /
+      # 1.17 / 1.71 / 2.85 / 1.65 against a truth that is exactly 2.0 every time -- a 3.3x spread
+      # injected into the reference arm purely by the anchor. Estimating it recovers the truth
+      # almost exactly instead: 1.99 / 2.04 / 2.00 / 2.03 / 1.82 / 2.00, with prior tails of
+      # 0.28-0.81, i.e. sitting mid-prior rather than in a tail. Divergences fell from 1.17 to 0.17
+      # per rep, and the four properties this study depends on all held: delta error 0.120 against
+      # the stationary arms' 2.19, noise_abs 0.045 against their 0.229, coverage 0.975, S1 0.349.
+      # (Six reps in fast mode -- indicative, not the full run.)
+      #
+      # NONSTAT_FIX_ETA=1 restores the fixed version, kept as an escape hatch for checking that a
+      # result does not depend on this choice.
+      overall_scales = overall_scales_nonstat,
+      err_scale = if (NONSTAT_FIX_ETA) ETA_FRAC_NONSTAT * eta_anchor else 0,
+      absolute_error = TRUE,
+      err_scale_mean = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
+      err_scale_sd   = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
       data = fit_ys,
-      autocor_a = 7, autocor_b = 3,
-      nonstationary = TRUE, num_treated = 5,
+      autocor_a = 8, autocor_b = 2,
+      nonstationary = TRUE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
@@ -236,12 +373,12 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
-      err_scale_mean = 0.1 * mean(overall_scales_stat),
-      err_scale_sd = 0.1 * mean(overall_scales_stat),
+      overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = ETA_FRAC_WEAK * eta_anchor,
+      err_scale_sd = ETA_FRAC_WEAK * eta_anchor,
       data = fit_ys,
       autocor_a = 98, autocor_b = 2,
-      nonstationary = FALSE, num_treated = 5,
+      nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
@@ -255,12 +392,12 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list(
       alpha_diag = 20,
       N_units = N_units, T_times = T_times,
-      overall_scales = 2 * overall_scales_stat, err_scale = 0, absolute_error = TRUE,
-      err_scale_mean = 0.05 * mean(overall_scales_stat),
-      err_scale_sd = 0.05 * mean(overall_scales_stat),
+      overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = ETA_FRAC_STRONG * eta_anchor,
+      err_scale_sd = ETA_FRAC_STRONG * eta_anchor,
       data = fit_ys,
       autocor_a = 98, autocor_b = 2,
-      nonstationary = FALSE, num_treated = 5,
+      nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
@@ -289,23 +426,36 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       res$pred_perc <- mean(pred_inc)
       res$pred_width <- mean(pred_width)
 
-      # tau, the noise-to-signal ratio: the quantity that decides whether stat_weak collapses onto
-      # nonstat. Under the Cartesian parametrization the error sd is tau * sigma_data[n]*||Lambda[n,:]||,
-      # so tau ~ N / S with S the effective scale -- record it (and how far into its own prior's upper
-      # tail it sits) so scale changes can be judged directly instead of inferred from the plots.
-      tau_draws <- pfit$err_scale
-      res$tau_med <- median(tau_draws)
-      res$tau_q95 <- unname(quantile(tau_draws, 0.95))
-      # prior upper-tail probability of the posterior median, under this fit's own truncated tau
-      # prior. All three now estimate tau, so all three get a tail (stat_strong's used to be NA
-      # because its tau was fixed at 0.1).
-      tau_prior <- switch(pfit$name,
-        nonstat     = c(2,    2),
-        stat_weak   = c(0.1,  0.1),
-        stat_strong = c(0.05, 0.05)
+      # The estimated observation-error scale, recorded so scale changes can be judged directly
+      # instead of inferred from the plots, together with how far into its own prior's upper tail
+      # the posterior median sits -- a prior-data conflict here is what says a sigma multiple is
+      # too small (see SIGMA_MULT_STAT above).
+      #
+      # Reported as eta, on the DATA's scale, because that is the scale the priors are written in.
+      # pfit$err_scale holds draws of tau[1] = eta / sigma[1], so multiply back by this arm's own
+      # sigma[1]. The previous version compared tau directly against the eta priors, which is off
+      # by a factor of sigma[1] (~13) and so reported a near-constant number carrying no
+      # information about the fit.
+      # Each arm's OWN sigma[1]. stat_weak is on sd_y, not overall_scales_stat, so a two-way
+      # nonstat/other split would misreport its eta by a factor of 2 * RMS / sd (~3.4x here).
+      sigma_1 <- switch(pfit$name,
+        nonstat     = overall_scales_nonstat[1],
+        stat_weak   = sd_y[1],
+        stat_strong = overall_scales_stat[1]
       )
-      res$tau_prior_tail <- (1 - pnorm(res$tau_med, tau_prior[1], tau_prior[2])) /
-        (1 - pnorm(0, tau_prior[1], tau_prior[2]))
+      eta_draws <- pfit$err_scale * sigma_1
+      res$eta_med <- median(eta_draws)
+      res$eta_q95 <- unname(quantile(eta_draws, 0.95))
+      # NA only when the arm's eta is FIXED, and so has no prior to sit in a tail of.
+      eta_prior_loc <- switch(pfit$name,
+        nonstat     = if (NONSTAT_FIX_ETA) NA_real_ else ETA_FRAC_NONSTAT * eta_anchor,
+        stat_weak   = ETA_FRAC_WEAK   * eta_anchor,
+        stat_strong = ETA_FRAC_STRONG * eta_anchor
+      )
+      # location and scale are equal for both stationary arms, by construction above
+      res$eta_prior_tail <- if (is.na(eta_prior_loc)) NA_real_ else
+        (1 - pnorm(res$eta_med, eta_prior_loc, eta_prior_loc)) /
+          (1 - pnorm(0, eta_prior_loc, eta_prior_loc))
 
       res$time_cor_pval <- pfit$time_cor_pval
 
@@ -417,10 +567,19 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   pp_seed <- sample.int(.Machine$integer.max, 1)
 
   test_data <- sample_model(
-    # err_scale = 2 matches the nonstationary model actually being fit (its tau prior is
-    # centred at err_scale_mean = 2), so the DGP is not generating data noisier than any of the
-    # fitted models expects.
-    overall_scales = rep(1, 8), err_scale = 2,
+    # sigma = 1 and err_sd = 2 are the truth this study measures its arms against. The nonstat arm
+    # is handed both (see SIGMA_MULT_NONSTAT above), so "correctly specified" here means the true
+    # scales, the true rho prior Beta(8, 2) and the same alpha_diag -- not merely the true
+    # functional form.
+    #
+    # absolute_error = TRUE though sigma is rep(1, 8), which makes it numerically identical to the
+    # ratio mode this used to be in (verified bit-identical). It is declared anyway so that the
+    # DGP states the same parametrization as every fitted arm: in ratio mode err_scale would be
+    # read as a MULTIPLE of overall_scales, so making overall_scales data-dependent here would
+    # silently rescale the error. That is exactly how the nonstationary arm's scales went ~3x
+    # wrong once already.
+    overall_scales = rep(1, 8), err_scale = 2, absolute_error = TRUE,
+    alpha_diag = 20,
     autocor_a = 8, autocor_b = 2,
     nonstationary = TRUE, num_treated = 0,
     type = "prior_pred", K_latent = K_latent,
