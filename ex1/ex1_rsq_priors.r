@@ -69,41 +69,41 @@ eta_anchor <- mean(rms_y)
 ETA_FRAC_VAGUE <- 0.5
 
 nonstat_prior_data <- sample_model(
-  overall_scales = overall_scales_nonstat, alpha_diag = 20,
+  overall_scales = overall_scales_nonstat, alpha_diag = ALPHA_DIAG,
   err_scale = ETA_FRAC_NONSTAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
-  autocor_a = 8, autocor_b = 2,
+  autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
   nonstationary = TRUE, num_treated = 0,
-  type = "prior_pred", K_latent = 4, iter = 6000,
+  type = "prior_pred", K_latent = K_LATENT, iter = 6000,
   n_chains = 1
 )
 
-nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq_len(T_TIMES)))$r.squared))
 
 stat_prior_data <- sample_model(
-  overall_scales = overall_scales_stat, alpha_diag = 20,
+  overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
   err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
-  autocor_a = 98, autocor_b = 2,
+  autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 4, iter = 6000,
+  type = "prior_pred", K_latent = K_LATENT, iter = 6000,
   n_chains = 1
 )
 
-stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq_len(T_TIMES)))$r.squared))
 
 
 vague_prior_data <- sample_model(
-  overall_scales = overall_scales_stat, alpha_diag = 20,
+  overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
   err_scale = ETA_FRAC_VAGUE * eta_anchor, absolute_error = TRUE,
   data = NULL,
-  autocor_a = 98, autocor_b = 2,
+  autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 4, iter = 6000,
+  type = "prior_pred", K_latent = K_LATENT, iter = 6000,
   n_chains = 1
 )
 
-vague_absr <- apply(vague_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+vague_absr <- apply(vague_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq_len(T_TIMES)))$r.squared))
 
 # Three panels: the two configurations the study actually fits, plus the vague stationary variant
 # that the check rules out. Only Nonstationary and Stationary are study arms.

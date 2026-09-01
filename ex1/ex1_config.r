@@ -22,7 +22,7 @@
 ## functional form.
 DGP_SIGMA <- 1
 DGP_ETA <- 2
-DGP_RHO <- c(8, 2)
+DGP_RHO <- c(8,2)
 
 ## ---- model shape ------------------------------------------------------------------------------
 N_UNITS <- 8
