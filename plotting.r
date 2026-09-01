@@ -52,14 +52,16 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
 # closely can still fail S1 because the trend in its REPLICATES is diluted by noise. Only the
 # replicate shows what S1 actually sees. One is drawn rather than several deliberately -- the
 # pattern is meant to be read across datasets, and an envelope of draws would clutter the panel.
-plot_post_fits_stat <- function(data, post_ns, post_2, post_1, unit, pred_rep = NULL) {
+# Observed series in grey, the nonstationary arm's posterior mean in black, the stationary arm's in
+# blue. Two arms, not three: ex1 previously fitted a second stationary arm differing only in its
+# error-scale prior, which is gone.
+plot_post_fits_stat <- function(data, post_ns, post_stat, unit, pred_rep = NULL) {
   series <- function(m) data.frame(time = seq_len(nrow(m)), obs = m[, unit])
 
   plot <- ggplot(mapping = aes(x = time, y = obs)) +
     geom_line(data = series(data), color = "grey") +
     geom_line(data = series(post_ns), color = "black") +
-    geom_line(data = series(post_2), color = "blue") +
-    geom_line(data = series(post_1), color = "blue", linetype = "dashed") +
+    geom_line(data = series(post_stat), color = "blue") +
     theme_bw() +
     theme(panel.grid = element_blank()) +
     xlab("Time") +

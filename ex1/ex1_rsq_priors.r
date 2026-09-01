@@ -51,20 +51,22 @@ plot_prior_absr <- function(absrs) {
 # small one lets a stationary model put enough prior mass on high |cor(y, t)| to be plausible for
 # these data. The stationary arms' sigma is held fixed across the ladder so the error scale is the
 # only thing that moves.
-rms_y <- rep(1, 8)
+# Scale constants come from ex1_config.r, the same file the study and ex1_derive_scales.r read, so
+# these figures cannot describe a model nobody fits. Only the ANCHOR is local: the study measures
+# RMS(y_n) from each dataset, and this file has no dataset, so it works in units where the anchor is
+# 1 and carries the study's multiples unchanged. Both things these figures show -- the shape of a
+# series and |cor(y, t)| -- are scale invariant, so the unit is a y-axis relabeling and nothing more.
+source("ex1_config.r")
 
-SIGMA_MULT_NONSTAT <- 1 / 7
-SIGMA_MULT_STAT    <- 2
-ETA_FRAC_NONSTAT   <- 2 * SIGMA_MULT_NONSTAT   # 2 x sigma_nonstat, i.e. the DGP's true error sd
-ETA_FRAC_WEAK      <- 0.1
-ETA_FRAC_STRONG    <- 0.05
-ETA_FRAC_VAGUE     <- 0.5    # this file only: the deliberately loose comparison arm
-
-# Both variables ARE sigma -- the vector the model receives -- so no call site has to remember which
-# multiple was applied where. The error scales read from eta_anchor, never from these.
+rms_y <- rep(1, N_UNITS)
 overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
 overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
 eta_anchor <- mean(rms_y)
+# The vague rung, this file only: a stationary configuration whose error scale is large enough to
+# flatten any trend. It is NOT a study arm. Its role is to show what the check rules OUT -- the
+# implied prior on |cor(y, t)| collapses toward zero, which is incompatible with expecting series
+# that trend -- and thereby what pins ETA_FRAC_STAT at the study's much smaller value.
+ETA_FRAC_VAGUE <- 0.5
 
 nonstat_prior_data <- sample_model(
   overall_scales = overall_scales_nonstat, alpha_diag = 20,
@@ -80,7 +82,7 @@ nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ 
 
 stat_prior_data <- sample_model(
   overall_scales = overall_scales_stat, alpha_diag = 20,
-  err_scale = ETA_FRAC_WEAK * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
@@ -90,19 +92,8 @@ stat_prior_data <- sample_model(
 
 stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-stat_prior_data1 <- sample_model(
-  overall_scales = overall_scales_stat, alpha_diag = 20,
-  err_scale = ETA_FRAC_STRONG * eta_anchor, absolute_error = TRUE,
-  data = NULL,
-  autocor_a = 98, autocor_b = 2,
-  nonstationary = FALSE, num_treated = 0,
-  type = "prior_pred", K_latent = 4, iter = 6000,
-  n_chains = 1
-)
 
-stat_strong_absr <- apply(stat_prior_data1$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
-
-weak_prior_data <- sample_model(
+vague_prior_data <- sample_model(
   overall_scales = overall_scales_stat, alpha_diag = 20,
   err_scale = ETA_FRAC_VAGUE * eta_anchor, absolute_error = TRUE,
   data = NULL,
@@ -112,13 +103,10 @@ weak_prior_data <- sample_model(
   n_chains = 1
 )
 
-weak_absr <- apply(weak_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
+vague_absr <- apply(vague_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1, 20)))$r.squared))
 
-# The two middle panels are the study's two stationary arms exactly: ETA_FRAC_WEAK = 0.1 is
-# stat_weak, ETA_FRAC_STRONG = 0.05 is stat_strong, and the study's arms now differ in nothing else
-# (same K_latent, same rho prior), so this figure and the study are showing the same contrast. The
-# Vague panel at 0.5 is not a study arm -- it is the illustrative upper rung, included to show where
-# the ladder ends up when the error is allowed to be large.
+# Three panels: the two configurations the study actually fits, plus the vague stationary variant
+# that the check rules out. Only Nonstationary and Stationary are study arms.
 #
 # One difference from the study remains, and it is deliberate: the study ESTIMATES eta under
 # TruncNormal(ETA_FRAC * eta_anchor, ETA_FRAC * eta_anchor) while these panels FIX it at the prior
@@ -127,9 +115,8 @@ weak_absr <- apply(weak_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq(1,
 # moves the statistic either way. Fixing keeps each panel a statement about one number.
 absrs <- list(
   `Nonstationary` = nonstat_absr,
-  `Stronger Prior` = stat_strong_absr,
-  `Weaker Prior` = stat_absr,
-  `Vague Prior` = weak_absr
+  `Stationary` = stat_absr,
+  `Vague Error` = vague_absr
 )
 
 absr_hists <- plot_prior_absr(absrs)

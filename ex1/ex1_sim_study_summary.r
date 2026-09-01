@@ -46,14 +46,11 @@ sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "e
 perc_summary <- sim_study_stat |>
   summarize(
     q5_perc_nonstat = quantile(nonstat_pred_perc, 0.05),
-    q5_perc_stat_weak = quantile(stat_weak_pred_perc, 0.05),
-    q5_perc_stat_strong = quantile(stat_strong_pred_perc, 0.05),
+    q5_perc_stat = quantile(stat_pred_perc, 0.05),
     q95_perc_nonstat = quantile(nonstat_pred_perc, 0.95),
-    q95_perc_stat_weak = quantile(stat_weak_pred_perc, 0.95),
-    q95_perc_stat_strong = quantile(stat_strong_pred_perc, 0.95),
+    q95_perc_stat = quantile(stat_pred_perc, 0.95),
     mean_perc_nonstat = mean(nonstat_pred_perc),
-    mean_perc_stat_weak = mean(stat_weak_pred_perc),
-    mean_perc_stat_strong = mean(stat_strong_pred_perc),
+    mean_perc_stat = mean(stat_pred_perc),
   )
 
 cat("\nPer-model 95% interval coverage:\n")
@@ -62,21 +59,18 @@ print(as_tibble(perc_summary), width = Inf)
 pval_summary <- sim_study_stat |>
   summarize(
     q5_pval_nonstat = quantile(nonstat_time_cor_pval, 0.05),
-    q5_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.05),
-    q5_pval_stat_strong = quantile(stat_strong_time_cor_pval, 0.05),
+    q5_pval_stat = quantile(stat_time_cor_pval, 0.05),
     q95_pval_nonstat = quantile(nonstat_time_cor_pval, 0.95),
-    q95_pval_stat_weak = quantile(stat_weak_time_cor_pval, 0.95),
-    q95_pval_stat_strong = quantile(stat_strong_time_cor_pval, 0.95),
+    q95_pval_stat = quantile(stat_time_cor_pval, 0.95),
     mean_pval_nonstat = mean(nonstat_time_cor_pval),
-    mean_pval_stat_weak = mean(stat_weak_time_cor_pval),
-    mean_pval_stat_strong = mean(stat_strong_time_cor_pval),
+    mean_pval_stat = mean(stat_time_cor_pval),
   )
 
 cat("\nS1 time-correlation predictive p-value:\n")
 print(as_tibble(pval_summary), width = Inf)
 
 # Build the per-time mean and +/-2 SE bands for the nonstationary ("ns") and
-# weaker-prior stationary ("st", i.e. stat_weak) models, for a given per-time
+# stationary ("st") models, for a given per-time
 # statistic: the signed error "mean" or the standardized error "absz".
 summarize_error <- function(stat) {
   abs(sim_study_stat) |>
@@ -91,8 +85,8 @@ summarize_error <- function(stat) {
     summarize(
       ns_mean = mean(.data[[paste0("nonstat_", stat)]]),
       ns_se   = sd(.data[[paste0("nonstat_", stat)]]) / sqrt(n()),
-      st_mean = mean(.data[[paste0("stat_weak_", stat)]]),
-      st_se   = sd(.data[[paste0("stat_weak_", stat)]]) / sqrt(n()),
+      st_mean = mean(.data[[paste0("stat_", stat)]]),
+      st_se   = sd(.data[[paste0("stat_", stat)]]) / sqrt(n()),
       .groups = "drop"
     ) |>
     mutate(
@@ -140,7 +134,8 @@ sim_study_overfit <- abs(sim_study_stat) |>
     cols = everything(),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
-    names_pattern = "^(nonstat|stat_weak|stat_strong)_(.*)$"
+    # nonstat before stat: alternation is left-preferring, and "nonstat" ends in "stat".
+    names_pattern = "^(nonstat|stat)_(.*)$"
   ) |>
   # Second pivot only over the time-indexed columns (name ends in _<digit>);
   # the scalar per-model stats (pred_mad, pred_perc, ...) are left untouched, so
@@ -166,8 +161,7 @@ sim_study_overfit <- abs(sim_study_stat) |>
   mutate(
     model = fct_recode(as.factor(model),
       "Nonstat" = "nonstat",
-      "Weaker" = "stat_weak",
-      "Stronger" = "stat_strong"
+      "Stationary" = "stat"
     ),
     time = paste0("Time ", time)
   )

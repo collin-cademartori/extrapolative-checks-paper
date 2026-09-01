@@ -20,33 +20,27 @@
 set.seed(20260831)
 N_DRAWS <- 20000L
 
-M_UNITS <- 8L
-T_TIMES <- 20L
-K_LATENT <- 4L
-# The DGP and all three fitted arms share alpha_diag, so the loadings prior is one setting rather
-# than two. (It was not always: run_sim_study_stat used to pass none and get the default
-# half-normal diagonal while the arms got the zero-avoiding inverse-gamma. Both have
-# E||Lambda[n,]||^2 = 1, so the gap was only a few percent, but it meant the "correctly specified"
-# reference arm differed from the DGP in a way nothing recorded.)
-ALPHA_DIAG <- 20
+## Every constant below comes from ex1_config.r, the single source the study and the figures read
+## too. This file previously kept its own copies and they drifted: ETA_FRAC_STAT sat at 0.1 here
+## after the study had moved to 0.2, so the guard at the foot of this file was checking the
+## committed multiples against a configuration nobody was fitting.
+source("ex1_config.r")
+
+M_UNITS <- N_UNITS
+# The DGP and every fitted arm share alpha_diag, so the loadings prior is one setting rather than
+# two. (It was not always: run_sim_study_stat used to pass none and get the default half-normal
+# diagonal while the arms got the zero-avoiding inverse-gamma. Both have E||Lambda[n,]||^2 = 1, so
+# the gap was only a few percent, but it meant the "correctly specified" reference arm differed
+# from the DGP in a way nothing recorded.)
 DGP_ALPHA_DIAG <- ALPHA_DIAG
 FIT_ALPHA_DIAG <- ALPHA_DIAG
 
-# The DGP that ex1_sim_study.r generates its datasets from (run_sim_study_stat), in its own units.
-DGP_SIGMA <- 1; DGP_ETA <- 2; DGP_RHO <- c(8, 2)
-# The two fitted arms' rho priors. The nonstationary arm shares the DGP's, deliberately: it is the
-# correctly specified reference arm, so it is handed the true rho prior as well as the true error
-# scale. One consequence matters for the derivation below -- with a common prior, "reproduce the RMS
-# of the data" and "receive the DGP's own sigma" are the SAME condition, so the nonstationary
-# multiple has a single unambiguous target instead of two competing ones.
-RHO_NONSTAT <- DGP_RHO
-RHO_STAT <- c(98, 2)
 # The nonstationary arm's error, as a multiple of its own sigma: the DGP's ratio, 2/1. Fixing it
-# here is what makes that arm's multiple a one-line solve rather than a root-find.
+# here is what makes that arm's multiple a one-line solve rather than a root-find. RHO_NONSTAT
+# equals DGP_RHO in the config, deliberately -- with a common rho prior, "reproduce the RMS of the
+# data" and "receive the DGP's own sigma" are the SAME condition, so the nonstationary multiple has
+# a single unambiguous target instead of two competing ones.
 ETA_OVER_SIGMA_NONSTAT <- DGP_ETA / DGP_SIGMA
-# The stationary arms' error, as a fraction of the anchor RMS. Held at its committed value because
-# it is set elsewhere on other grounds; the stationary multiple below is derived given it.
-ETA_FRAC_STAT <- 0.1
 
 ## --- the model's prior, transcribed ------------------------------------------------------------
 
@@ -201,14 +195,35 @@ cat("   which is why the two fixed points separate.)\n")
 ## The constants depend on T_times, K_latent, alpha_diag and both rho priors. Fail loudly if a
 ## change to any of those has moved them, rather than letting ex1_sim_study.r drift silently.
 
+## --- SD_PER_SIGMA -------------------------------------------------------------------------------
+## The realised sd of a T_TIMES window per unit of sigma, at the stationary configuration stated
+## WITHOUT an anchor: eta = (ETA_FRAC_STAT / SIGMA_MULT_STAT) * sigma. ex1_sd_priors.r turns this
+## one number into its figure -- sigma set to the expected SD implies series only this fraction as
+## dispersed as intended -- so it needs the same protection as the multiples above.
+
+eta_over_sigma <- ETA_FRAC_STAT / SIGMA_MULT_STAT
+sd_per_sigma <- unname(prior_moments(1, eta_over_sigma, RHO_STAT[1], RHO_STAT[2],
+                                     nonstationary = FALSE, alpha_diag = FIT_ALPHA_DIAG)["sd"])
+
+cat("\n=== SD_PER_SIGMA: how much dispersion a short window actually realises ===\n")
+cat(sprintf("  config, anchor-free: eta = %.2f x sigma\n", eta_over_sigma))
+cat(sprintf("  E[realised sd(y)] / sigma = %.3f   over T = %d at rho ~ Beta(%g, %g)\n",
+            sd_per_sigma, T_TIMES, RHO_STAT[1], RHO_STAT[2]))
+cat(sprintf("  -> to realise an expected SD of S, set sigma = %.2f x S\n", 1 / sd_per_sigma))
+cat(sprintf("  committed value %.3f\n", SD_PER_SIGMA))
+
 TOL <- 0.10
-committed <- c(SIGMA_MULT_NONSTAT = 1 / 7, SIGMA_MULT_STAT = 2)
-derived <- c(SIGMA_MULT_NONSTAT = mult_nonstat, SIGMA_MULT_STAT = mult_stat_sd)
+# Committed values read from ex1_config.r, so this guard checks the constants the study and the
+# figures actually use rather than a second copy that could drift from them.
+committed <- c(SIGMA_MULT_NONSTAT = SIGMA_MULT_NONSTAT, SIGMA_MULT_STAT = SIGMA_MULT_STAT,
+               SD_PER_SIGMA = SD_PER_SIGMA)
+derived <- c(SIGMA_MULT_NONSTAT = mult_nonstat, SIGMA_MULT_STAT = mult_stat_sd,
+             SD_PER_SIGMA = sd_per_sigma)
 gap <- derived / committed - 1
 
 cat("\n=== Committed constants ===\n")
 for (nm in names(committed)) {
-  cat(sprintf("  %-18s committed %.4f   derived %.4f   %+.1f%%   %s\n", nm,
+  cat(sprintf("  %-19s committed %.4f   derived %.4f   %+.1f%%   %s\n", nm,
               committed[[nm]], derived[[nm]], 100 * gap[[nm]],
               if (abs(gap[[nm]]) < TOL) "ok" else "OUT OF TOLERANCE"))
 }

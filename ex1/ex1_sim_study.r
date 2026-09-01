@@ -67,6 +67,10 @@ invisible(clusterCall(cl, setwd, getwd()))
 
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
 # the console (outfile = "" surfaces all worker output).
+# Workers source the shared config themselves rather than receiving each constant through
+# .export: adding a constant later would otherwise need remembering to export it, and a worker
+# running a different value than the master is exactly the drift ex1_config.r exists to prevent.
+invisible(clusterCall(cl, source, "ex1_config.r"))
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
@@ -77,10 +81,17 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(purrr)
 })))
 
+source("ex1_config.r")
 source("../sample_model.r")
 source("../pathfinder_init.r")
 source("../plotting.r")
 
+# NOTE ON THE MEASUREMENTS BELOW: the escalation notes in this header were recorded when ex1 fitted
+# THREE arms -- nonstat plus two stationary arms, stat_weak and stat_strong, differing only in their
+# error-scale prior. Only one stationary arm remains, now called `stat`, carrying what stat_weak had.
+# The old names are left in those records rather than rewritten, because rewriting them would
+# misreport which configuration was actually measured.
+#
 # Uses sample_model.r's default model, ../ife_named.stan, whose error scale is tau*sigma and does NOT
 # involve ||Lambda||. That matters beyond convention: it is what makes the likelihood depend on
 # (Lambda, Phi) only through the product M = Lambda_Phi, giving
@@ -155,6 +166,9 @@ EX1_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)
 ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 # Base sampling length, per mode. All three arms share these.
+# How many reps get a per-rep fit figure (see the gate in run_sim_stat).
+PLOT_REPS <- 25L
+
 EX1_ITER <- if (STUDY_MODE == "fast") 500L else 2000L
 EX1_WARM <- if (STUDY_MODE == "fast") 500L else 500L
 
@@ -207,7 +221,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # Length of the treatment window. The three fits below pass this, and noise_abs_tr's pre_times
   # is T_times minus this, so the overfitting measurement window and the fitted treatment window
   # cannot drift apart. They used to: the fits hard-coded 5 while pre_times read this variable.
-  num_treated_ex1 <- 5
+  num_treated_ex1 <- NUM_TREATED
   # ---- scales -------------------------------------------------------------------------------
   # Every scale constant below is a fraction of ONE anchor, RMS(y_n). RMS rather than sd(y) because
   # these models have no intercept and no factor means, so the level of each series must be produced
@@ -217,16 +231,16 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # contributing sqrt(2)*eta = 2.83) -- it measures eta, not sigma. RMS is the other way round, 86%
   # signal by variance, which is why it can anchor both arms.
   #
-  # One anchor means the four constants are directly comparable, to each other and to the truth:
+  # One anchor means the constants are directly comparable, to each other and to the truth
+  # (values from ex1_config.r; ETA_FRAC_STAT is still provisional):
   #
   #     arm            sigma        eta / RMS(y)
   #     truth (DGP)    RMS/6.8         0.295
-  #     nonstat        RMS/7           0.286    fixed
-  #     stat_weak      2*RMS           0.100    estimated
-  #     stat_strong    2*RMS           0.050    estimated
+  #     nonstat        RMS/7           0.286    estimated, prior centred on the truth
+  #     stat           2*RMS           0.200    estimated
   #
-  # That table is the mechanism this example demonstrates. The stationary arms are handed an error
-  # ~3x and ~6x smaller than the truth, and that single number does both jobs: it is what produces
+  # That table is the mechanism this example demonstrates. The stationary arm is handed an error
+  # smaller than the truth, and that single number does both jobs: it is what produces
   # the overfitting, and it is what the prior predictive check on |cor(y, t)| requires, since a large
   # error attenuates a linear trend and only a small one lets a stationary model look nonstationary
   # enough to be plausible. The example is exactly that trade-off -- under a wrong model, a prior
@@ -287,28 +301,14 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   rms_y <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   sd_y <- apply(fit_ys, 2, sd)
 
-  SIGMA_MULT_NONSTAT <- 1 / 7
-  SIGMA_MULT_STAT    <- 2
-  ETA_FRAC_NONSTAT   <- 2 * SIGMA_MULT_NONSTAT   # 2 x sigma_nonstat, i.e. the DGP's true error sd
-  ETA_FRAC_WEAK      <- 0.2
-  # Default FALSE: the nonstationary arm ESTIMATES eta like the stationary arms. See the note at
-  # its fit below for why, and what setting this changes.
-  NONSTAT_FIX_ETA <- nzchar(Sys.getenv("NONSTAT_FIX_ETA"))
-  ETA_FRAC_STRONG <- 0.05
-
-  # Prior scale for the treatment effect, SHARED by all three arms so they differ in their model of
-  # the DATA, not in their prior over the ESTIMAND. Each arm used to inherit its own sigma[1], which
-  # is not a common scale -- sigma denotes the differenced innovation scale in the nonstationary
-  # branch and the long-run marginal SD in the stationary one. Measured on this DGP that gave the
-  # nonstationary arm 1.00 against the stationary arms' 14.05, a 14x gap on the very quantity the
-  # study compares them on; and since the true effect here is exactly zero, the tighter prior shrank
-  # the nonstationary arm toward the truth for free.
+  # SIGMA_MULT_*, ETA_FRAC_*, DELTA_FRAC, RHO_*, ALPHA_DIAG and the DGP constants all come from
+  # ex1_config.r, which the figures and ex1_derive_scales.r read too. Nothing scale-related is
+  # defined here any more; only the per-dataset quantities below, which carry this dataset's units.
   #
-  # Anchored on mean sd(y_n), not RMS: an effect is a CHANGE in the series, so the yardstick is how
-  # much a typical unit moves, not how far it sits from zero. DELTA_FRAC = 1 reads as "the effect
-  # could plausibly be as large as a typical unit's temporal variation" -- weakly informative, easy
-  # to state, and it lands between the two values it replaces.
-  DELTA_FRAC <- 1.0
+  # Default FALSE: the nonstationary arm ESTIMATES eta like the stationary arm. See the note at its
+  # fit below for why, and what setting this changes.
+  NONSTAT_FIX_ETA <- nzchar(Sys.getenv("NONSTAT_FIX_ETA"))
+
 
   # Both variables ARE sigma -- the vector the model receives -- so no call site has to remember
   # which multiple was applied where. The error scales read from rms_y, never from these; keeping
@@ -323,13 +323,13 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
   # global RNG, so a seed drawn after a fit would not be reproducible. Invariant: never derive a seed
   # after a fit. One seed per model PER ESCALATION ROUND, so a refit is reproducible too.
-  fit_seeds <- matrix(sample.int(.Machine$integer.max, 3L * ESCALATE_MAX), nrow = 3L)
+  fit_seeds <- matrix(sample.int(.Machine$integer.max, 2L * ESCALATE_MAX), nrow = 2L)
 
   fits <- list()
 
   fits$nonstat <- fit_with_escalation(
     list(
-      alpha_diag = 20,
+      alpha_diag = ALPHA_DIAG,
       N_units = N_units, T_times = T_times,
       # eta is ESTIMATED here, as it is for the stationary arms, under the same truncated-normal
       # form (location = scale) located at ETA_FRAC_NONSTAT * eta_anchor. Two reasons.
@@ -358,7 +358,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       err_scale_mean = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
       err_scale_sd   = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
       data = fit_ys,
-      autocor_a = 8, autocor_b = 2,
+      autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
       nonstationary = TRUE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
@@ -369,43 +369,25 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   )
   fits$nonstat$name <- "nonstat"
 
-  fits$stat_weak <- fit_with_escalation(
+  fits$stat <- fit_with_escalation(
     list(
-      alpha_diag = 20,
+      alpha_diag = ALPHA_DIAG,
       N_units = N_units, T_times = T_times,
       overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
-      err_scale_mean = ETA_FRAC_WEAK * eta_anchor,
-      err_scale_sd = ETA_FRAC_WEAK * eta_anchor,
+      err_scale_mean = ETA_FRAC_STAT * eta_anchor,
+      err_scale_sd = ETA_FRAC_STAT * eta_anchor,
       data = fit_ys,
-      autocor_a = 98, autocor_b = 2,
+      autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
       nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
       fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
-    seeds = fit_seeds[2, ], label = sprintf("unit %d stat_weak", i), progress_log = progress_log, ladder = EX1_LADDER
+    seeds = fit_seeds[2, ], label = sprintf("unit %d stat", i), progress_log = progress_log, ladder = EX1_LADDER
   )
-  fits$stat_weak$name <- "stat_weak"
+  fits$stat$name <- "stat"
 
-  fits$stat_strong <- fit_with_escalation(
-    list(
-      alpha_diag = 20,
-      N_units = N_units, T_times = T_times,
-      overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
-      err_scale_mean = ETA_FRAC_STRONG * eta_anchor,
-      err_scale_sd = ETA_FRAC_STRONG * eta_anchor,
-      data = fit_ys,
-      autocor_a = 98, autocor_b = 2,
-      nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
-      fit_scales = FALSE,
-      type = "posterior", K_latent = K_latent, ad = 0.8,
-      iter = EX1_ITER, iter_warm = EX1_WARM,
-      n_chains = 3, pathfinder_init = TRUE
-    ),
-    seeds = fit_seeds[3, ], label = sprintf("unit %d stat_strong", i), progress_log = progress_log, ladder = EX1_LADDER
-  )
-  fits$stat_strong$name <- "stat_strong"
 
   res <- fits |>
     map(function(pfit) {
@@ -438,21 +420,15 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # information about the fit.
       # Each arm's OWN sigma[1]. stat_weak is on sd_y, not overall_scales_stat, so a two-way
       # nonstat/other split would misreport its eta by a factor of 2 * RMS / sd (~3.4x here).
-      sigma_1 <- switch(pfit$name,
-        nonstat     = overall_scales_nonstat[1],
-        stat_weak   = sd_y[1],
-        stat_strong = overall_scales_stat[1]
-      )
+      sigma_1 <- if (pfit$name == "nonstat") overall_scales_nonstat[1] else overall_scales_stat[1]
       eta_draws <- pfit$err_scale * sigma_1
       res$eta_med <- median(eta_draws)
       res$eta_q95 <- unname(quantile(eta_draws, 0.95))
       # NA only when the arm's eta is FIXED, and so has no prior to sit in a tail of.
-      eta_prior_loc <- switch(pfit$name,
-        nonstat     = if (NONSTAT_FIX_ETA) NA_real_ else ETA_FRAC_NONSTAT * eta_anchor,
-        stat_weak   = ETA_FRAC_WEAK   * eta_anchor,
-        stat_strong = ETA_FRAC_STRONG * eta_anchor
-      )
-      # location and scale are equal for both stationary arms, by construction above
+      eta_prior_loc <- if (pfit$name == "nonstat") {
+        if (NONSTAT_FIX_ETA) NA_real_ else ETA_FRAC_NONSTAT * eta_anchor
+      } else ETA_FRAC_STAT * eta_anchor
+      # location and scale are equal for every arm, by construction above
       res$eta_prior_tail <- if (is.na(eta_prior_loc)) NA_real_ else
         (1 - pnorm(res$eta_med, eta_prior_loc, eta_prior_loc)) /
           (1 - pnorm(0, eta_prior_loc, eta_prior_loc))
@@ -527,27 +503,37 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     list_flatten()
 
   pns_means <- apply(fits$nonstat$y_means, c(2, 3), mean)
-  p2_means <- apply(fits$stat_weak$y_means, c(2, 3), mean)
-  p1_means <- apply(fits$stat_strong$y_means, c(2, 3), mean)
+  pstat_means <- apply(fits$stat$y_means, c(2, 3), mean)
 
   # Show a single unit's fits per rep
   plot_unit <- 2
-  # One posterior predictive replicate from stat_weak, overlaid in red. Everything here is in
-  # ANCHOR-PERMUTED column order -- fit_ys, the three posterior means, and y_pred alike -- so
-  # plot_unit = 2 is the same unit statistic S1 is computed on (Stan reads Y_pred[:, 2] of the
-  # permuted matrix). stat_weak is the arm whose S1 p-value collapsed, and y_pred is Y_latent plus
-  # observation noise, which is what S1 sees and what the three mean lines do not show.
+  # One posterior predictive replicate from the stationary arm, overlaid in red. Everything here is
+  # in ANCHOR-PERMUTED column order -- fit_ys, both posterior means, and y_pred alike. y_pred is
+  # Y_latent plus observation noise, which is what S1 sees and what the mean lines do not show.
+  #
+  # plot_unit = 2 is AN untreated unit, not a distinguished one: S1 now averages over every
+  # untreated unit, so no single column is the one the statistic is "about". Note this figure
+  # therefore says nothing about the treated unit's counterfactual, which is where the delta error
+  # lives -- set plot_unit = 1 to look at that instead.
   # Set pred_rep = NULL to drop the overlay.
-  fit_plot <- plot_post_fits_stat(fit_ys, pns_means, p2_means, p1_means, unit = plot_unit,
-    pred_rep = fits$stat_weak$y_pred[1, , plot_unit])
-  ggsave(
-    fit_plot,
-    file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),
-    create.dir = TRUE
-  )
+  # Gate the per-rep figure. Unconditional, a 200-rep run wrote 200 PNGs -- I/O and clutter per rep
+  # for a diagnostic nobody inspects in bulk; ex2 gates this the same way. Raise PLOT_REPS for more.
+  #
+  # Note `i` is the DATASET index, not the rep counter, so this keeps the low-numbered datasets
+  # rather than the first PLOT_REPS reps. That is deliberate: the same datasets are then plotted
+  # across runs with different rep counts, which makes two runs comparable figure-by-figure.
+  if (i <= PLOT_REPS) {
+    fit_plot <- plot_post_fits_stat(fit_ys, pns_means, pstat_means, unit = plot_unit,
+      pred_rep = fits$stat$y_pred[1, , plot_unit])
+    ggsave(
+      fit_plot,
+      file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),
+      create.dir = TRUE
+    )
+  }
 
   if (post_check) {
-    check_plot <- plot_data_matrix_post(fit_ys, fits$stat_weak$y_pred)
+    check_plot <- plot_data_matrix_post(fit_ys, fits$stat$y_pred)
     ggsave(
       check_plot,
       file = paste0("../figs/sim_stat_figs/check_plot_", i, ".pdf"),
@@ -558,7 +544,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   return(res)
 }
 
-run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
+run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FALSE) {
   # Seed the master-process RNG, and draw the dataset selection and the prior-
   # predictive Stan seed *before* generating test_data, so they are not perturbed
   # by cmdstanr's $sample() (which advances R's RNG).
@@ -572,15 +558,15 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
     # scales, the true rho prior Beta(8, 2) and the same alpha_diag -- not merely the true
     # functional form.
     #
-    # absolute_error = TRUE though sigma is rep(1, 8), which makes it numerically identical to the
+    # absolute_error = TRUE though sigma is constant, which makes it numerically identical to the
     # ratio mode this used to be in (verified bit-identical). It is declared anyway so that the
     # DGP states the same parametrization as every fitted arm: in ratio mode err_scale would be
     # read as a MULTIPLE of overall_scales, so making overall_scales data-dependent here would
     # silently rescale the error. That is exactly how the nonstationary arm's scales went ~3x
     # wrong once already.
-    overall_scales = rep(1, 8), err_scale = 2, absolute_error = TRUE,
-    alpha_diag = 20,
-    autocor_a = 8, autocor_b = 2,
+    overall_scales = rep(DGP_SIGMA, N_UNITS), err_scale = DGP_ETA, absolute_error = TRUE,
+    alpha_diag = ALPHA_DIAG,
+    autocor_a = DGP_RHO[1], autocor_b = DGP_RHO[2],
     nonstationary = TRUE, num_treated = 0,
     type = "prior_pred", K_latent = K_latent,
     iter = 2 * reps, seed = pp_seed
@@ -589,7 +575,7 @@ run_sim_study_stat <- function(K_latent = 3, reps, seed, post_check = FALSE) {
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES", "anchor_order",
     "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER",
-    "EX1_ITER", "EX1_WARM")
+    "EX1_ITER", "EX1_WARM", "PLOT_REPS")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
@@ -680,7 +666,7 @@ cat(sprintf("\n=== mode: %s | reps: %d | iter/warm: %d/%d | escalation: %s ===\n
 if (STUDY_MODE == "fast")
   cat("    FAST MODE -- for specification search only. Elevated rhat_M is expected here and says\n",
       "   nothing about the specification. Do not report these numbers.\n", sep = "")
-sim_study_stat <- run_sim_study_stat(K_latent = 4, study_reps, seed = 40318)
+sim_study_stat <- run_sim_study_stat(K_latent = K_LATENT, study_reps, seed = 40318)
 
 stopCluster(cl)
 

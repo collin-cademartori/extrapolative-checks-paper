@@ -35,16 +35,14 @@ K_latent <- 4
 # deliberately ~1.6x generous (the stationary self-consistency fixed point is 1.22). Their
 # dispersion does match closely -- E[sd(y)] is 0.56 against 0.62 -- since the gap is level, not
 # spread. Inherited from the study by design, not a defect here.
-rms_y <- rep(1, N_units)
+# Scale constants come from ex1_config.r, the same file the study and ex1_derive_scales.r read, so
+# these figures cannot describe a model nobody fits. Only the ANCHOR is local: the study measures
+# RMS(y_n) from each dataset, and this file has no dataset, so it works in units where the anchor is
+# 1 and carries the study's multiples unchanged. Both things these figures show -- the shape of a
+# series and |cor(y, t)| -- are scale invariant, so the unit is a y-axis relabeling and nothing more.
+source("ex1_config.r")
 
-SIGMA_MULT_NONSTAT <- 1 / 7
-SIGMA_MULT_STAT    <- 2
-ETA_FRAC_NONSTAT   <- 2 * SIGMA_MULT_NONSTAT   # 2 x sigma_nonstat, i.e. the DGP's true error sd
-ETA_FRAC_WEAK      <- 0.1
-ETA_FRAC_STRONG    <- 0.05
-
-# Both variables ARE sigma -- the vector the model receives -- so no call site has to remember which
-# multiple was applied where. The error scales read from eta_anchor, never from these.
+rms_y <- rep(1, N_UNITS)
 overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
 overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
 eta_anchor <- mean(rms_y)
@@ -52,7 +50,7 @@ eta_anchor <- mean(rms_y)
 stat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
   overall_scales = overall_scales_stat, alpha_diag = 20,
-  err_scale = ETA_FRAC_WEAK * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
@@ -92,7 +90,7 @@ ggsave(nonstat_plot_ppc, file = "../figs/ppc_nonstat.pdf", device = "pdf", width
 stat_prior_data_long <- sample_model(
   N_units = N_units, T_times = 500,
   overall_scales = overall_scales_stat, alpha_diag = 20,
-  err_scale = ETA_FRAC_WEAK * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
   data = NULL,
   autocor_a = 98, autocor_b = 2,
   nonstationary = FALSE, num_treated = 0,
