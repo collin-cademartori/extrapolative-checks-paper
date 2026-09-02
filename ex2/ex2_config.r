@@ -33,22 +33,29 @@ DGP_F_TREAT_SD <- 1.9
 ## DGP_LEVEL_OFFSET, so this IS the level gap between the treated/true group and the spurious group.
 ##
 ## It was a bare literal 6 appearing twice inside sim_model_intercepts, which understated its role:
-## it is effectively a tuning parameter for this example's headline contrast. Measured by sweeping it
-## (2 datasets per level, fast settings), cor_sq with the SPURIOUS units responds very differently in
-## the two arms:
+## it is effectively a tuning parameter for this example's headline contrast.
 ##
-##     level gap        no_ints        ints
-##        ~1             0.61          0.64 - 0.73
-##        ~3             0.48 - 0.61    0.64 - 0.74
-##        ~6             0.58 - 0.61    0.65
-##       ~10             0.39          0.64
-##     slope           -0.0221/unit   -0.0049/unit   (cor -0.77 vs -0.40)
+## MEASURED by ex2_level_delta_screen.r: 30 datasets, each fitted under BOTH levels and both effect
+## priors (common random numbers -- f_alt = f_treat - L cancels the offset and per-unit sd is
+## level-invariant, so raising L shifts unit n by exactly L * Lambda[n,1] and nothing else). Posterior
+## mean cor_sq with the SPURIOUS units, averaged over the two effect priors:
 ##
-## no_ints falls 4.5x faster, because it has no gamma: a unit's level must come out of
-## Lambda * Phi_means, the same loadings that generate correlation, so separating levels forces
-## Lambda_spurious away from Lambda_treated. ints puts the level in gamma and is largely immune.
-## The same mechanism shows on the other side -- no_ints' cor_sq with the TRUE comparators RISES with
-## the gap (0.845 -> 0.979) while ints stays flat near 0.82.
+##     level gap      no_ints        ints          gap (ints - no_ints)
+##        1            0.635         0.684              0.049
+##       10            0.469         0.689              0.220
+##
+##     level effect on the gap:  +0.171   se 0.021   95% CI [+0.130, +0.212]
+##
+## no_ints carries the whole effect; ints does not move. no_ints has no gamma, so a unit's level must
+## come out of Lambda * Phi_means -- the same loadings that generate correlation -- and separating
+## levels forces Lambda_spurious away from Lambda_treated. ints puts the level in gamma and is immune.
+## The same mechanism shows on the other side: over the same range no_ints' cor_sq with the TRUE
+## comparators RISES +0.101 (se 0.008, 0.874 -> 0.975) while ints moves +0.001 (se 0.001).
+##
+## An earlier 2-datasets-per-level sweep reported this same direction, but its numbers were not
+## usable -- the between-dataset sd of cor_sq is 0.06 (ints) to 0.14 (no_ints), so an unpaired
+## handful of datasets cannot resolve a 0.17 effect, and that sweep also predated the
+## pathfinder_init.r RNG fix. The paired design above is what the numbers here come from.
 ##
 ## So at a small offset the two arms nearly agree and the example has little to show; at a large one
 ## they separate sharply. 6 sits mid-range. That is a defensible choice but it is a CHOICE, and the
@@ -132,4 +139,10 @@ ETA_CV_EX2 <- 0.5
 ##
 ## Anchored on mean sd(y_n), not RMS: an effect is a CHANGE in the series, so the yardstick is how
 ## much a typical unit moves, not how far it sits from zero.
+##
+## The VALUE is not doing much work. ex2_level_delta_screen.r brackets it, fitting the same 30
+## datasets under 0.5 and 2.0: widening the prior raises the ints - no_ints gap on cor_sq(spurious)
+## by +0.023 (se 0.004), real but roughly seven times smaller than the level effect above. It costs
+## accuracy on the estimand it prices -- mean |delta| error rises 0.221 -> 0.293 (no_ints) and
+## 0.325 -> 0.537 (ints) over that range -- so there is no case for widening past 1.0.
 DELTA_FRAC_EX2 <- 1.0
