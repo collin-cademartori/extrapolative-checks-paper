@@ -68,10 +68,28 @@ pathfinder_inits <- function(mod, stat_data, n_chains, num_paths = NULL, draws =
   if (length(dom) == 0) return(NULL)
 
   pcols <- setdiff(names(dd), c("lp__", "lp_approx__", ".chain", ".iteration", ".draw"))
-  if (!is.null(seed)) set.seed(seed)
+  # Draw the init picks from this fit's own `seed`, then RESTORE the global stream. The restore is
+  # the point: set.seed() here without it pinned the caller's RNG to a deterministic function of the
+  # fit seed, so anything drawn afterwards was reproducible from that seed rather than from the
+  # caller's stream. With a fixed seed across fits it produced byte-identical draws -- three scratch
+  # harnesses generated the same "independent" dataset over and over, and the resulting duplicate
+  # rows sat at maximum-leverage points of two sweeps and manufactured trends that were not there.
+  #
+  # In the studies the seeds differ per fit, so the symptom is subtler but the defect is the same:
+  # every fit silently reseeds the worker, which breaks the per-task stream %dorng% is relied on to
+  # provide. Same class of bug as sample_index in sample_model.r, and the same fix.
+  #
   # distinct dominant draws when there are enough; fall back to with-replacement only if the
   # dominant set is smaller than the chain count (else sample() errors).
-  pick <- sample(dom, n_chains, replace = length(dom) < n_chains)
+  if (!is.null(seed)) {
+    have_state <- exists(".Random.seed", envir = globalenv())
+    old_state <- if (have_state) get(".Random.seed", envir = globalenv()) else NULL
+    set.seed(seed)
+    pick <- sample(dom, n_chains, replace = length(dom) < n_chains)
+    if (have_state) assign(".Random.seed", old_state, envir = globalenv())
+  } else {
+    pick <- sample(dom, n_chains, replace = length(dom) < n_chains)
+  }
   inits <- lapply(pick, function(i) draw_to_init(unlist(dd[i, pcols])))
   attr(inits, "n_dominant") <- length(dom)
   attr(inits, "n_pf_draws") <- nrow(dd)

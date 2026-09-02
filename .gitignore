@@ -12,3 +12,7 @@ ife_named_*
 progress.log
 ckpt_ns_*/
 .scratch/
+
+# per-run checkpoint directories and scratch
+ckpt_*/
+.scratch/

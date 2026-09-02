@@ -214,7 +214,16 @@ transformed parameters {
   }
   vector<lower=0>[M_units] tau = err_sd ./ sigma;
 
-  vector<lower=0>[M_units] error_precisions = inv(omega_sq * square(err_sd));
+  // The omega_sq factor applies in RATIO mode only. There err_sd = tau * sigma[n] is a FRACTION of
+  // the signal scale, and omega_sq is the share of signal variance carried by the AR process (the
+  // rest going to the factor means), so scaling by it holds the noise-to-signal ratio fixed as
+  // omega_sq moves. In ABSOLUTE mode err_sd is an error sd on the DATA's own scale and must not be
+  // rescaled by a parameter: doing so made a shared eta mean different things in two arms that
+  // differ only in whether factor_means is on. Measured on ex2, where only the no_ints arm uses
+  // factor means, that arm's effective error was sqrt(omega_sq) x eta -- 0.67 x on average under
+  // omega_sq's Uniform(0, 1) prior -- and its posterior eta ran 1.6x the other arm's to compensate.
+  real err_var_mult = (absolute_error == 1) ? 1.0 : omega_sq;
+  vector<lower=0>[M_units] error_precisions = inv(err_var_mult * square(err_sd));
   if(nonstationary) {
     // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
@@ -325,11 +334,11 @@ generated quantities {
 
   if(nonstationary) {
     for(n in 1:M_units) {
-      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * omega_sq * square(err_sd[n]) * errors_cov));
+      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * err_var_mult * square(err_sd[n]) * errors_cov));
     }
   } else {
     for(n in 1:M_units) {
-      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], omega_sq * square(err_sd[n]) * errors_cov);
+      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], err_var_mult * square(err_sd[n]) * errors_cov);
     }
   }
 

@@ -302,8 +302,14 @@ sample_model <- function(
     loc_cor_data <- cor(cor_with_treated, unit_location)
     loc_cor_pval <- mean(loc_cor_pred > loc_cor_data)
 
-    y_cor <- abs(cor(data)[1, 2:ncol(data)])
-    cor_err_mean <- rowMeans(abs(y_cor - t(cor_sq)))
+    # SQUARED sample correlation, to match cor_sq, which ife_named.stan defines as a squared
+    # correlation (squared factor covariance over the product of total variances). This used to be
+    # abs(cor(...)) -- an unsquared |r| differenced against an r^2 -- so the "error" was dominated by
+    # the gap between the two quantities rather than by any model misfit. Measured on ex2: for units
+    # whose r^2 the model put at 0.887, the reported error was 0.052, essentially exactly the
+    # |r| - r^2 = 0.942 - 0.887 that the mismatch alone produces.
+    y_cor_sq <- cor(data)[1, 2:ncol(data)]^2
+    cor_err_mean <- rowMeans(abs(y_cor_sq - t(cor_sq)))
 
     out <- list(
       y_means = y_means_post,

@@ -66,6 +66,10 @@ invisible(clusterCall(cl, setwd, getwd()))
 
 # Pre-attach the workers' packages quietly, so their startup banners don't clutter
 # the console (outfile = "" surfaces all worker output).
+# Workers source the shared config themselves rather than receiving each constant through
+# .export: adding a constant later would otherwise need remembering to export it, and a worker
+# running a different value than the master is exactly the drift ex2_config.r exists to prevent.
+invisible(clusterCall(cl, source, "ex2_config.r"))
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(cmdstanr)
   library(posterior)
@@ -74,6 +78,7 @@ invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
   library(purrr)
 })))
 
+source("ex2_config.r")
 source("../sample_model.r")
 source("../pathfinder_init.r")
 source("../plotting.r")
@@ -145,6 +150,44 @@ EX2_WARM <- if (STUDY_MODE == "fast") 500L else 1000L
 # Cholesky diagonals. This is a reparameterization only: the
 # fitted means, treatment effect, and (permutation-invariant) check statistics do not
 # depend on the choice; only the per-unit outputs need mapping back (see below).
+# Checkpoint compatibility fingerprint. The directory key (mode, seed, rep count) does NOT capture
+# the model CONFIGURATION, so a checkpoint set written under a different one is silently resumed and
+# mixed in. That has already cost a run: after ex1 dropped from three arms to two, an old set was
+# resumed, bind_rows filled NA for the columns the old rows lacked, those rows carried
+# failed = FALSE so they survived the filter, and the summary died on
+# `quantile(stat_pred_perc, 0.05)` with "missing values and NaN's not allowed". The crash was the
+# lucky outcome -- had the column names lined up, two configurations would have been averaged
+# together silently.
+#
+# The fingerprint covers what actually determines the column set and the arms' meaning: the arm
+# names and the contents of the shared config. It deliberately does NOT hash the whole study script,
+# so editing a comment mid-run does not throw away hours of completed tasks.
+ckpt_fingerprint <- function(arms, config_file) {
+  paste(c(paste(sort(arms), collapse = ","),
+          unname(tools::md5sum(config_file))), collapse = " ")
+}
+
+# Refuse to resume a set written under a different configuration, rather than silently mixing it in.
+ckpt_check_fingerprint <- function(ckpt_dir, arms, config_file) {
+  fp_file <- file.path(ckpt_dir, "FINGERPRINT")
+  fp <- ckpt_fingerprint(arms, config_file)
+  if (file.exists(fp_file)) {
+    old <- readLines(fp_file, warn = FALSE)[1]
+    if (!identical(old, fp)) {
+      stop("checkpoint directory ", basename(ckpt_dir), " was written under a DIFFERENT model ",
+           "configuration (arms or ", basename(config_file), " have changed).\n",
+           "  stored:  ", old, "\n  current: ", fp, "\n",
+           "Resuming it would mix configurations. Delete the directory to start a fresh set.")
+    }
+  } else if (length(list.files(ckpt_dir, pattern = "\\.rds$"))) {
+    stop("checkpoint directory ", basename(ckpt_dir), " holds results but no FINGERPRINT, so it ",
+         "predates this check and its configuration cannot be verified. Delete it to start fresh.")
+  } else {
+    writeLines(fp, fp_file)
+  }
+  invisible(fp)
+}
+
 anchor_order <- function(y, K) {
   N <- ncol(y)
   yc <- scale(y, center = TRUE, scale = FALSE)
@@ -174,17 +217,18 @@ unpermute_untreated <- function(v, perm) {
 # treated unit and their long-run average, so location and correlation are
 # entangled in a way the unit-intercepts model wrongly assumes independent.
 sim_model_intercepts <- function(
-    N_unc = 2, N_comp_true = 2, N_comp_spur = 2, T_times = 30, T_treated = 5,
-    K_unc = 1, sim = 0.9) {
+    N_unc = 2, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = 2,
+    T_times = DGP_T_TIMES, T_treated = DGP_T_TREATED,
+    K_unc = DGP_K_UNC, sim = 0.9) {
   N_units <- 1 + N_comp_true + N_comp_spur + N_unc
   K_gen <- 2 + K_unc
 
-  f_treat <- 6 + arima.sim(model = list(ar = 0.9), n = T_times)
-  f_treat_sd <- 1.9
+  f_treat <- DGP_LEVEL_OFFSET + arima.sim(model = list(ar = 0.9), n = T_times)
+  f_treat_sd <- DGP_F_TREAT_SD
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over the
   # treatment window -- the driver of the "spurious" comparators.
-  f_alt <- (f_treat - 6) +
+  f_alt <- (f_treat - DGP_LEVEL_OFFSET) +
     c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated with the
@@ -219,7 +263,7 @@ sim_model_intercepts <- function(
   # correlation with the treated does not determine location -- contrary to the
   # unit-intercepts model's assumption. Y is returned T x N (the fit orientation).
   lat <- loads %*% facs
-  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = 0.1 * max(apply(lat, 1, sd))))
+  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = DGP_NOISE_FRAC * max(apply(lat, 1, sd))))
 
   # Ground-truth group of each unit (column), in generating order: the treated unit,
   # the true comparators, the spurious comparators, then the uncorrelated units. The
@@ -234,15 +278,15 @@ sim_model_intercepts <- function(
   return(list(Y = Y, groups = groups))
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters = 0,
+run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plot_iters = 0,
                                progress_log = NULL) {
   # Fixed total of 8 units; N_comp spurious comparators trade off against the
   # uncorrelated fillers (1 treated + 2 true + N_comp spurious + N_unc = 8), so the
   # swept quantity is the *share* of units spuriously correlated with the treated.
-  N_unc <- 5 - N_comp
+  N_unc <- DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp
   gen <- sim_model_intercepts(
-    N_unc = N_unc, N_comp_true = 2, N_comp_spur = N_comp, K_unc = 1,
-    sim = sim, T_times = 30
+    N_unc = N_unc, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = N_comp, K_unc = DGP_K_UNC,
+    sim = sim, T_times = DGP_T_TIMES
   )
   test_ys <- gen$Y
 
@@ -253,6 +297,10 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
   # block is full rank; per-unit outputs are mapped back to the original order after the
   # fits. The plots below use the original test_ys.
   perm <- anchor_order(test_ys, K_latent)
+  # perm[1] == 1 by construction. Everything downstream that indexes the treated unit by position
+  # (delta, and unpermute_untreated's assumption that element j of a per-untreated vector belongs to
+  # permuted column j + 1) depends on it, so make the dependency explicit rather than implicit.
+  stopifnot(perm[1] == 1)
   fit_ys <- test_ys[, perm]
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's
@@ -263,21 +311,52 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
 
   fits <- list()
 
-  # The overall_scales differ between the two fits by design and are deliberately NOT given ex1's
-  # 2 x RMS multiple: ex1's stationary fits have neither intercepts nor factor means, so the level of
-  # each series has to be produced by the factors themselves and their realised amplitude has to be
-  # corrected for; both fits here have an explicit level mechanism, so the correction does not apply.
+  # ---- scales ---------------------------------------------------------------------------------
+  # sigma differs between the two arms BY DESIGN, and is deliberately NOT given ex1's 2 x RMS
+  # multiple: ex1's stationary fits have neither intercepts nor factor means, so the level of each
+  # series has to be produced by the factors themselves and their realised amplitude corrected for;
+  # both fits here have an explicit level mechanism, so that correction does not apply. no_ints must
+  # still produce the level from its factor means, hence RMS; ints has gamma for the level, hence sd.
+  #
+  # eta does NOT differ between the arms, and that is the point of absolute_error mode here. Under
+  # the previous ratio parametrization the error was tau[n] * sigma[n] with a shared tau prior, so
+  # the justified sigma difference leaked straight into the error scale, where nothing justifies it:
+  #
+  #     E[mean RMS(y)] = 3.93,  E[mean sd(y)] = 1.66  ->  a 2.37x gap
+  #     true DGP noise sd = 0.201  (0.1 * max_n sd(latent_n), measured over 300 datasets)
+  #       no_ints got 0.1 * 3.93 = 0.393  ->  1.95x the truth
+  #       ints    got 0.1 * 1.66 = 0.166  ->  0.83x the truth
+  #
+  # That handicapped the CORRECTLY SPECIFIED arm by a factor of two, for no reason connected to
+  # intercepts -- exactly the contrast this study exists to measure. In absolute mode eta is one
+  # shared observation-error sd on the data's own scale, so the sigma convention cannot reach it.
+  #
+  # ETA_FRAC_EX2 is set from the data scale rather than as a bare constant, matching ex1: the DGP's
+  # noise is defined off the latent SD, so sd(y_n) is its natural anchor, and it is arm-neutral
+  # (unlike RMS, which carries the intercepts). 0.201 / 1.66 = 0.121, hence 0.12. ETA_CV_EX2 = 0.5
+  # keeps the prior's relative width exactly what the old tau ~ TN(0.1, 0.05) had.
+  sd_y <- apply(fit_ys, 2, sd)
+  eta_anchor <- mean(sd_y)
+  eta_loc <- ETA_FRAC_EX2 * eta_anchor
+  eta_scale <- ETA_CV_EX2 * eta_loc
+  # Shared effect-prior scale, for the same reason eta is shared: see ex2_config.r.
+  delta_scale_ex2 <- DELTA_FRAC_EX2 * eta_anchor
+  # Unit-intercept prior, anchored on the data rather than fixed: see ex2_config.r.
+  int_loc_ex2 <- mean(fit_ys)
+  int_scale_ex2 <- INT_FRAC * sd(colMeans(fit_ys))
+
   overall_scales <- apply(fit_ys, 2, \(x) sqrt(mean(x ^ 2)))
   fits$no_ints <- fit_with_escalation(
     list(
       N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
       overall_scales = overall_scales,
-      err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+      err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = eta_loc, err_scale_sd = eta_scale,
       data = fit_ys,
-      autocor_a = 90, autocor_b = 10,
-      nonstationary = FALSE, num_treated = 5,
+      autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
+      nonstationary = FALSE, num_treated = NUM_TREATED, delta_scale = delta_scale_ex2,
       include_factor_means = TRUE,
-      fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
+      fit_scales = 0, alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4
@@ -288,17 +367,18 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
   )
   fits$no_ints$name <- "no_ints"
 
-  overall_sds <- apply(fit_ys, 2, sd)
+  overall_sds <- sd_y
   fits$ints <- fit_with_escalation(
     list(
       N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
       overall_scales = overall_sds,
-      err_scale = 0, err_scale_mean = 0.1, err_scale_sd = 0.05,
+      err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = eta_loc, err_scale_sd = eta_scale,
       data = fit_ys,
-      autocor_a = 90, autocor_b = 10,
-      nonstationary = FALSE, num_treated = 5,
-      include_ints = TRUE, int_scale = 3, int_loc = 4,
-      fit_scales = 0, alpha_diag = 20, pathfinder_init = TRUE,
+      autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
+      nonstationary = FALSE, num_treated = NUM_TREATED, delta_scale = delta_scale_ex2,
+      include_ints = TRUE, int_scale = int_scale_ex2, int_loc = int_loc_ex2,
+      fit_scales = 0, alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4
@@ -321,17 +401,38 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
     map(function(pfit) {
       res <- list()
 
+      # 99% posterior-predictive interval coverage, per (time, unit) as ex1 does.
+      #
+      # Two bugs used to live here, and they masked each other. The quantile was taken over
+      # `stat_y_pred` with NO indexing -- pooling every draw, every time point and every unit into a
+      # single global interval, recomputed identically 240 times inside these loops. With unit
+      # intercepts spread over N(4, 3) that pooled range is far wider than any unit's own predictive
+      # interval, so coverage was inflated toward 1 by construction rather than by the models
+      # covering. Second, the comparison was against test_ys, the ORIGINAL column order, while
+      # y_pred is in the ANCHOR-PERMUTED order the fit used; the global bounds hid the mismatch.
+      # Fixing either alone would have been wrong, so both are fixed together: index per (t, n), and
+      # compare against fit_ys.
       stat_y_pred <- pfit$y_pred
       pred_inc <- matrix(NA, nrow = T_times, ncol = N_units)
+      pred_width <- matrix(NA, nrow = T_times, ncol = N_units)
       for (n in 1:N_units) {
         for (t in 1:T_times) {
-          y_bounds <- quantile(stat_y_pred, c(0.005, 0.995))
-          pred_inc[t, n] <-
-            (test_ys[t, n] >= y_bounds[1]) &&
-              (test_ys[t, n] <= y_bounds[2])
+          y_bounds <- quantile(stat_y_pred[, t, n], c(0.005, 0.995))
+          pred_inc[t, n] <- (fit_ys[t, n] >= y_bounds[1]) && (fit_ys[t, n] <= y_bounds[2])
+          pred_width[t, n] <- (y_bounds[2] - y_bounds[1]) / (max(fit_ys[, n]) - min(fit_ys[, n]))
         }
       }
       res$pred_perc <- mean(pred_inc)
+      res$pred_width <- mean(pred_width)
+
+      # The estimated error scale, on the data's own scale. In absolute mode err_sd is a single
+      # shared eta and draws("tau") returns eta / sigma[n], so multiply back by this arm's sigma[1].
+      # Recorded with its prior tail so a prior-data conflict on the error scale is visible.
+      sigma_1 <- if (pfit$name == "no_ints") overall_scales[1] else overall_sds[1]
+      eta_draws <- pfit$err_scale * sigma_1
+      res$eta_med <- median(eta_draws)
+      res$eta_prior_tail <- (1 - pnorm(res$eta_med, eta_loc, eta_scale)) /
+        (1 - pnorm(0, eta_loc, eta_scale))
 
       res$loc_cor_pval <- pfit$loc_cor_pval
 
@@ -389,7 +490,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
       int_plot <- plot_intercepts_fits(
         test_ys,
         cor_sq = fits[[m]]$cor_sq,
-        groups = gen$groups, num_treated = 5
+        groups = gen$groups, num_treated = NUM_TREATED
       )
       ggsave(
         int_plot,
@@ -402,7 +503,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = 3, rep_i = NA, plot_iters
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, plot_iters = 3) {
+run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, seed, plot_iters = 3) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
   # extract_variable_array() call, ggplot2 for the per-condition figures.
@@ -450,6 +551,7 @@ run_sim_study_intercepts <- function(K_latent = 3, reps, N_comps, sims, seed, pl
   ckpt_dir <- file.path(getwd(),
     sprintf("ckpt_ints_%s_seed%d_n%d", STUDY_MODE, seed, nrow(grid)))
   dir.create(ckpt_dir, showWarnings = FALSE)
+  ckpt_check_fingerprint(ckpt_dir, c("no_ints", "ints"), "ex2_config.r")
   n_resume <- length(list.files(ckpt_dir, pattern = "^task_.*\\.rds$"))
   if (n_resume > 0) {
     cat(sprintf("  resuming: %d of %d tasks already checkpointed in %s\n\n",
@@ -519,7 +621,7 @@ sim_study_ints <- run_sim_study_intercepts(
   reps = study_reps,
   N_comps = c(2, 3),
   sims = c(0.7, 0.9),
-  K_latent = 3,
+  K_latent = K_LATENT,
   seed = 52918,
   plot_iters = 50
 )

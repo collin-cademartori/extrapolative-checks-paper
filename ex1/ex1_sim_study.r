@@ -181,6 +181,44 @@ EX1_WARM <- if (STUDY_MODE == "fast") 500L else 500L
 #
 # ex2's companion unpermute_untreated() is NOT ported: it exists to map per-untreated-unit outputs
 # (cor_sq, abs_cors_err) back to the original order, and ex1 stores no per-unit fit output.
+# Checkpoint compatibility fingerprint. The directory key (mode, seed, rep count) does NOT capture
+# the model CONFIGURATION, so a checkpoint set written under a different one is silently resumed and
+# mixed in. That has already cost a run: after ex1 dropped from three arms to two, an old set was
+# resumed, bind_rows filled NA for the columns the old rows lacked, those rows carried
+# failed = FALSE so they survived the filter, and the summary died on
+# `quantile(stat_pred_perc, 0.05)` with "missing values and NaN's not allowed". The crash was the
+# lucky outcome -- had the column names lined up, two configurations would have been averaged
+# together silently.
+#
+# The fingerprint covers what actually determines the column set and the arms' meaning: the arm
+# names and the contents of the shared config. It deliberately does NOT hash the whole study script,
+# so editing a comment mid-run does not throw away hours of completed tasks.
+ckpt_fingerprint <- function(arms, config_file) {
+  paste(c(paste(sort(arms), collapse = ","),
+          unname(tools::md5sum(config_file))), collapse = " ")
+}
+
+# Refuse to resume a set written under a different configuration, rather than silently mixing it in.
+ckpt_check_fingerprint <- function(ckpt_dir, arms, config_file) {
+  fp_file <- file.path(ckpt_dir, "FINGERPRINT")
+  fp <- ckpt_fingerprint(arms, config_file)
+  if (file.exists(fp_file)) {
+    old <- readLines(fp_file, warn = FALSE)[1]
+    if (!identical(old, fp)) {
+      stop("checkpoint directory ", basename(ckpt_dir), " was written under a DIFFERENT model ",
+           "configuration (arms or ", basename(config_file), " have changed).\n",
+           "  stored:  ", old, "\n  current: ", fp, "\n",
+           "Resuming it would mix configurations. Delete the directory to start a fresh set.")
+    }
+  } else if (length(list.files(ckpt_dir, pattern = "\\.rds$"))) {
+    stop("checkpoint directory ", basename(ckpt_dir), " holds results but no FINGERPRINT, so it ",
+         "predates this check and its configuration cannot be verified. Delete it to start fresh.")
+  } else {
+    writeLines(fp, fp_file)
+  }
+  invisible(fp)
+}
+
 anchor_order <- function(y, K) {
   N <- ncol(y)
   yc <- scale(y, center = TRUE, scale = FALSE)
@@ -605,6 +643,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FAL
   ckpt_dir <- file.path(getwd(),
     sprintf("ckpt_ns_%s_seed%d_reps%d", STUDY_MODE, seed, reps))
   dir.create(ckpt_dir, showWarnings = FALSE)
+  ckpt_check_fingerprint(ckpt_dir, c("nonstat", "stat"), "ex1_config.r")
   n_resume <- length(list.files(ckpt_dir, pattern = "^rep_.*\\.rds$"))
   if (n_resume > 0) {
     cat(sprintf("  resuming: %d of %d reps already checkpointed in %s\n\n",
