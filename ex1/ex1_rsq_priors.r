@@ -46,7 +46,8 @@ plot_prior_absr <- function(absrs) {
 # (ife_named.stan applies the sqrt(2) differencing inflation itself). So the ETA_FRAC_* constants
 # below take no differencing correction, and a caller-side one would double-count.
 #
-# The four panels are a ladder in ETA_FRAC alone -- 0.286 / 0.100 / 0.050 / 0.500 as a fraction of
+# The four panels are a ladder in ETA_FRAC alone -- ETA_FRAC_NONSTAT (0.323) / 0.100 / 0.050 /
+# 0.500 as a fraction of
 # RMS(y) -- which is the point of the figure: a large error attenuates a linear trend, so only a
 # small one lets a stationary model put enough prior mass on high |cor(y, t)| to be plausible for
 # these data. The stationary arms' sigma is held fixed across the ladder so the error scale is the

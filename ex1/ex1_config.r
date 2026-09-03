@@ -50,6 +50,15 @@ RHO_STAT <- c(98, 2)          # near-unit-root: mean 0.98
 ##                       fixed point, and because this arm shares the DGP's rho prior the same value
 ##                       also hands it the DGP's own sigma and eta.
 ##
+##                       1/6.2, not the 1/7 it was. It MOVES WITH DGP_RHO, and did not follow when
+##                       that went Beta(8,2) -> Beta(7,3): a less persistent DGP integrates to a
+##                       smaller RMS, so the multiple must rise. Measured, E[RMS] at sigma = 1 is
+##                       7.01 under Beta(8,2) and 6.19 under Beta(7,3), so 1/7 handed this arm
+##                       sigma 0.883 and eta 1.766 against a truth of 1.000 and 2.000 -- the
+##                       REFERENCE arm running 12% cramped, which flatters every contrast measured
+##                       against it. At 1/6.2 it receives 1.000 and 2.000. ex1_derive_scales.r's
+##                       guard is what caught this; it had been failing since the rho change.
+##
 ##   SIGMA_MULT_STAT     NOT a conversion. Under this misspecification no multiple matches the
 ##                       data's RMS and its SD at once, so it chooses: it matches the SD. A
 ##                       near-unit-root AR(1) realises only ~40% of its long-run SD over T = 20, so
@@ -57,7 +66,7 @@ RHO_STAT <- c(98, 2)          # near-unit-root: mean 0.98
 ##                       Matching the SD overshoots the RMS; matching the RMS would PROHIBIT the
 ##                       dispersion the analyst expects, and excluding a moment is a stronger
 ##                       assumption than exceeding one.
-SIGMA_MULT_NONSTAT <- 1 / 7
+SIGMA_MULT_NONSTAT <- 1 / 6.2
 SIGMA_MULT_STAT <- 2
 
 ## Error scales, as fractions of the anchor. eta is on the LEVEL scale in both branches --
@@ -91,7 +100,18 @@ ETA_FRAC_STAT <- 0.1
 ##
 ## Anchored on mean sd(y_n), not RMS: an effect is a CHANGE in the series, so the yardstick is how
 ## much a typical unit moves, not how far it sits from zero.
-DELTA_FRAC <- 1.0
+##
+## 0.5, not 1.0. This is an ELICITATION, not a tuning result: a treatment effect equal to a full
+## standard deviation of the outcome would be enormous by the standards of most applied programs,
+## so a prior placing half its mass beyond that is not what an analyst believes. Half a sample SD
+## is the honest statement of "effects are usually smaller than the variation already in the data".
+##
+## It is deliberately NOT justified by its effect on the study's contrast. The true effect here is
+## exactly zero, so ANY tightening of a prior centred at zero moves both arms toward the truth and
+## flatters the noisier one -- the contrast would improve for a reason that has nothing to do with
+## whether 0.5 is a defensible belief. Both arms share this value (see the note above), so the
+## comparison is unaffected either way.
+DELTA_FRAC <- 0.5
 
 ## Realised sd(y) per unit of sigma, for the stationary configuration over a T_TIMES window. A
 ## MEASURED property of the model, not a choice: a near-unit-root AR(1) realises far less dispersion

@@ -1,6 +1,6 @@
 ## Derivation of the two sigma multiples used by ex1:
 ##
-##     SIGMA_MULT_NONSTAT = 1/7     SIGMA_MULT_STAT = 2
+##     SIGMA_MULT_NONSTAT = 1/6.2     SIGMA_MULT_STAT = 2
 ##
 ## Both convert the anchor RMS(y_n) -- measured from each dataset -- into the `overall_scales`
 ## (sigma) that ife_named.stan receives. This file exists so those constants are not bare numbers in
@@ -134,7 +134,7 @@ cat(sprintf("  at sigma = 1 (eta = %.1f x sigma) the prior predictive gives E[RM
             ETA_OVER_SIGMA_NONSTAT, ns1["rms"]))
 cat(sprintf("  RMS is proportional to sigma here, so the self-consistent multiple is 1/%.2f = %.4f\n",
             ns1["rms"], mult_nonstat))
-cat(sprintf("  committed value 1/7 = %.4f\n", 1 / 7))
+cat(sprintf("  committed value = %.4f\n", SIGMA_MULT_NONSTAT))
 cat("\n  Because this arm shares the DGP's rho prior, that one solve satisfies both criteria at\n")
 cat("  once: the arm reproduces the RMS of the data it is fitted to, AND it receives the DGP's own\n")
 cat(sprintf("  sigma and eta -- %.3f and %.3f against the true 1.000 and 2.000. There is no\n",

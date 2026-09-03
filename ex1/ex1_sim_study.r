@@ -274,7 +274,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   #
   #     arm            sigma        eta / RMS(y)
   #     truth (DGP)    RMS/6.8         0.295
-  #     nonstat        RMS/7           0.286    estimated, prior centred on the truth
+  #     nonstat        RMS/6.2         0.323    estimated, prior centred on the truth
   #     stat           2*RMS           0.200    estimated
   #
   # That table is the mechanism this example demonstrates. The stationary arm is handed an error
@@ -288,18 +288,23 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   #   * SIGMA_MULT_NONSTAT is a units conversion. In the nonstationary branch sigma denotes the
   #     scale of the DIFFERENCED signal (Y_means_0 = sigma * Lambda_Phi, then cumulative_sum), so
   #     an anchor measured on the level has to be converted, and integrating a T = 20 window costs
-  #     roughly an order of magnitude. It is the self-consistency fixed point: generate at
-  #     sigma = RMS/7 and the prior predictive gives that RMS back (derived to -0.4% by
+  #     roughly an order of magnitude. It MOVES WITH DGP_RHO -- see ex1_config.r for the 1/7 ->
+  #     1/6.2 correction after DGP_RHO went Beta(8,2) -> Beta(7,3). It is the self-consistency
+  #     fixed point: generate at
+  #     sigma = RMS/6.2 and the prior predictive gives that RMS back (derived to +0.1% by
   #     ex1_derive_scales.r -- run it to see where the number comes from). It moves with T and with
   #     K_latent, and is nearly inert to the error size: the required multiple runs 1/6.5, 1/6.6,
-  #     1/7.0, 1/8.0 as err_sd goes 0.5, 1, 2, 4.
+  #     1/7.0, 1/8.0 as err_sd goes 0.5, 1, 2, 4. (Those four were measured under DGP_RHO =
+  #     Beta(8,2); the qualitative point -- weak dependence on err_sd, strong dependence on rho --
+  #     is what carries over, not the specific values.)
   #
-  #     This arm shares the DGP's rho prior, Beta(8, 2), so the fixed point does double duty: the
-  #     multiple that reproduces the observed RMS also hands the arm the DGP's own sigma and eta,
-  #     1.00 and 2.00. That is the reference arm being handed the truth -- deliberate, and it
-  #     belongs in the write-up. Were the two priors allowed to diverge the criteria would separate
-  #     (at Beta(7, 3) self-consistency gives 1/6.2, about 10% above the truth) and the derivation
-  #     would have to say which one it solves.
+  #     This arm shares the DGP's rho prior, whatever DGP_RHO is set to, so the fixed point does
+  #     double duty: the multiple that reproduces the observed RMS also hands the arm the DGP's own
+  #     sigma and eta, 1.00 and 2.00. That is the reference arm being handed the truth --
+  #     deliberate, and it belongs in the write-up. It also means the multiple is NOT free of the
+  #     rho prior: change DGP_RHO and this must be re-derived, which is exactly what was missed
+  #     when it went Beta(8,2) -> Beta(7,3). Were the two priors allowed to diverge, the two
+  #     criteria would separate and the derivation would have to say which one it solves.
   #   * SIGMA_MULT_STAT is NOT a conversion either, but for a different reason: under this
   #     misspecification there is no multiple that matches the data's RMS and its SD at once, so it
   #     chooses which to match. The two fixed points are far apart -- sigma = 1.28 * RMS reproduces
@@ -593,7 +598,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FAL
   test_data <- sample_model(
     # sigma = 1 and err_sd = 2 are the truth this study measures its arms against. The nonstat arm
     # is handed both (see SIGMA_MULT_NONSTAT above), so "correctly specified" here means the true
-    # scales, the true rho prior Beta(8, 2) and the same alpha_diag -- not merely the true
+    # scales, the true rho prior (DGP_RHO) and the same alpha_diag -- not merely the true
     # functional form.
     #
     # absolute_error = TRUE though sigma is constant, which makes it numerically identical to the
