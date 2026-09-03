@@ -125,12 +125,12 @@ RHO_EX2 <- c(90, 10)       # mean 0.9
 ## Using one rule matters: a figure drawn under a different prior than the study fits would not be
 ## checking the fitted model, which is the trap ex2_pred_checks.r was already in.
 ##
-## INT_FRAC = 0.9 reproduces the old scale of 3 (the DGP's sd of per-unit means is 3.41), so this
-## changes where the prior sits, not how wide it is.
+## INT_FRAC = 1: the prior scale on unit intercepts IS the observed spread of unit means, with no
+## calibration factor.
 ##
 ## CAVEAT: sd(colMeans(y)) is estimated from DGP_N_UNITS = 8 numbers, so its own sampling CV is
 ## ~27%. The prior's width will wobble between datasets for reasons unrelated to the level spread.
-INT_FRAC <- 0.9
+INT_FRAC <- 1.0
 
 ## sd(colMeans(y)) as a multiple of mean sd(y_n), measured on the DGP. Needed only by
 ## ex2_pred_checks.r, which works in units where mean sd(y_n) = 1 and so cannot measure the level
@@ -160,10 +160,14 @@ LEVEL_SPREAD_FRAC <- 2.50
 ## intercepts. Absolute mode closes that: sigma keeps its per-arm difference, eta cannot inherit it.
 ##
 ## Anchored on mean sd(y_n): the DGP defines its noise off the latent SD, and sd is arm-neutral
-## where RMS carries the intercepts. 0.201 / 1.66 = 0.121, hence 0.12. The CV matches what the old
-## tau ~ TN(0.1, 0.05) had.
+## where RMS carries the intercepts. 0.201 / 1.66 = 0.121, hence 0.12.
+##
+## ETA_CV_EX2 is the prior sd of eta over its prior location, and matches ex1's ETA_CV_EX1: neither
+## study asserts the error scale more confidently than the other. Measured on 24 paired datasets,
+## the choice is inert here -- 0.5 against 1.0 moves the ints - no_ints gap on cor_sq(spurious) by
+## +0.001 (se 0.002).
 ETA_FRAC_EX2 <- 0.12
-ETA_CV_EX2 <- 0.5
+ETA_CV_EX2 <- 1.0
 
 ## Prior scale for the treatment effect, SHARED by both arms so they differ in their model of the
 ## DATA, not in their prior over the ESTIMAND. Without it each arm inherits its own sigma[1], and
