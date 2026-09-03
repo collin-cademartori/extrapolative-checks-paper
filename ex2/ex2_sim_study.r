@@ -265,7 +265,7 @@ sim_model_intercepts <- function(
   # correlation with the treated does not determine location -- contrary to the
   # unit-intercepts model's assumption. Y is returned T x N (the fit orientation).
   lat <- loads %*% facs
-  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = DGP_NOISE_FRAC * max(apply(lat, 1, sd))))
+  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = DGP_NOISE_FRAC * mean(apply(lat, 1, sd))))
 
   # Ground-truth group of each unit (column), in generating order: the treated unit,
   # the true comparators, the spurious comparators, then the uncorrelated units. The

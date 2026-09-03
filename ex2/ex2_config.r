@@ -71,11 +71,30 @@ DGP_LEVELS <- c(5, 10)
 ## intercept prior, so it ranks the axes rather than measuring them under the current config.)
 DGP_SIM <- 0.9
 
-## Observation-noise sd, as a fraction of the LARGEST unit's latent sd. `max` is the least stable
-## anchor available: measured over 300 datasets the realised noise sd ranges 0.103 to 0.446 (mean
-## 0.201), so the truth itself varies four-fold rep to rep and everything downstream inherits that
-## as extra variance. Also open in EX2_PLAN.md section 5.
-DGP_NOISE_FRAC <- 0.1
+## Observation-noise sd, as a fraction of the AVERAGE unit's latent sd.
+##
+## It was 0.1 * max_n sd(latent_n), flagged as unstable because the realised noise sd swings about
+## 2x across datasets (5-95%: 0.133 to 0.296, mean 0.202, CV 0.25). That flag was half right and its
+## CONSEQUENCE was overstated. Measured over 1500 datasets on the sweep grid:
+##
+##   * `max` is barely less stable than `mean` -- CV 0.25 against 0.22. The swing is not an artifact
+##     of using an order statistic; the per-unit latent sds themselves vary that much, because the
+##     AR realisations and the random loadings do.
+##   * and it very largely CANCELS. The true noise sd and mean sd(y_n) -- the anchor ETA_FRAC_EX2 is
+##     built on -- correlate at +0.93, so the RATIO between them, which is what ETA_FRAC_EX2 claims
+##     to be, has CV 0.09 rather than 0.25. The prior located at 0.12 * mean sd(y_n) lands within
+##     88-116% of the true noise sd in 90% of datasets, against a prior whose own sd equals its
+##     location (CV 1.0). It is calibrated per dataset an order of magnitude better than its width.
+##
+## So the anchoring is doing real work: it holds the signal-to-noise ratio roughly constant across
+## datasets. Fixing the noise at a constant (ex1's approach) would REMOVE that and make the SNR
+## swing 2x instead, which is worse for a study comparing arms across datasets.
+##
+## `mean` rather than `max` anyway, for consistency with every other anchor here and because "12% of
+## the average unit's latent variation" is easier to state than "of the largest unit's". The
+## fraction rises 0.100 -> 0.121 to hold the realised noise sd at its previous 0.202, so this is a
+## change of anchor, not of noise level.
+DGP_NOISE_FRAC <- 0.121
 
 ## ---- model shape -----------------------------------------------------------------------------
 K_LATENT <- 3

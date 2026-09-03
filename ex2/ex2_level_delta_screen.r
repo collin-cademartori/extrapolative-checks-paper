@@ -68,7 +68,7 @@ make_components <- function(seed) {
   for (n in seq_len(N_SPUR)) lo[1+DGP_N_COMP_TRUE+n,] <- c(0,sqrt(SIM),sqrt(1-SIM)*ruv(K-2))
   for (n in seq_len(N_unc)) lo[1+DGP_N_COMP_TRUE+N_SPUR+n,] <- c(0,0,ruv(K-2))
   lat0 <- lo %*% rbind(ar_treat, f_alt, f_unc)
-  noise <- matrix(rnorm(DGP_N_UNITS*Tt, sd=DGP_NOISE_FRAC*max(apply(lat0,1,sd))), DGP_N_UNITS, Tt)
+  noise <- matrix(rnorm(DGP_N_UNITS*Tt, sd=DGP_NOISE_FRAC*mean(apply(lat0,1,sd))), DGP_N_UNITS, Tt)
   list(lat0=lat0, lo=lo, noise=noise, Tt=Tt)
 }
 build_Y <- function(cp, L) t(cp$lat0 + L * outer(cp$lo[,1], rep(1, cp$Tt)) + cp$noise)

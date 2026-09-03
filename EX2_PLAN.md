@@ -119,10 +119,14 @@ assert the committed constants still hold within tolerance so a change to `K_lat
 
 - **A `no_ints` prior predictive panel.** `ex2_pred_checks.r` only shows the `ints` arm, though the
   paper's contrast is between the two.
-- **The DGP's noise anchor.** `0.1 * max_n sd(latent_n)` uses `max`, the least stable anchor
-  available — the same instability that steered ex1 toward mean-based anchors. Measured, the true
-  noise sd ranges **0.103 to 0.446** across datasets, so the "truth" itself varies four-fold rep to
-  rep. Everything downstream inherits that as extra variance.
+- ~~**The DGP's noise anchor.**~~ **RESOLVED, and the concern was overstated.** The anchor is now
+  `0.121 * mean_n sd(latent_n)` (was `0.1 * max_n`), but the swap barely mattered: `max` and `mean`
+  have CV 0.25 and 0.22, so the instability was in the latent sds themselves, not in the choice of
+  order statistic. More importantly the variation largely **cancels** — the true noise sd and
+  `mean sd(y_n)`, which `ETA_FRAC_EX2` is anchored on, correlate at **+0.93**, so their ratio has
+  CV 0.09 and the prior lands within 88–116% of the truth in 90% of datasets. "The truth varies
+  four-fold and everything downstream inherits it" was true of the noise sd in isolation and wrong
+  about the consequence. The anchoring holds SNR roughly constant, which is what you want.
 - **`f_treat_sd <- 1.9` is hardcoded** as the post-treatment divergence of `f_alt`, while the
   realised `arima.sim(ar = 0.9, n = 30)` sd varies around it. The treatment-window separation is
   therefore a fixed absolute amount rather than one tied to each dataset's realised scale.

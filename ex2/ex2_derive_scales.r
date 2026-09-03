@@ -55,7 +55,7 @@ gen_one <- function(N_comp_spur, level, sim = DGP_SIM) {
   }
 
   lat <- loads %*% facs
-  noise_sd <- DGP_NOISE_FRAC * max(apply(lat, 1, sd))
+  noise_sd <- DGP_NOISE_FRAC * mean(apply(lat, 1, sd))
   Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = noise_sd))
   list(Y = Y, noise_sd = noise_sd)
 }
@@ -130,15 +130,17 @@ cat(sprintf("  INT_FRAC = %.2f gives a prior scale of %.2f in data units\n",
 cat("\n  The prior's LOCATION is the data's grand mean, so it is shift-invariant and nothing is\n")
 cat("  committed here. The old fixed N(4, 3) sat about 0.6 sd above the actual grand mean.\n")
 
-## --- a caveat this file should not hide -----------------------------------------------------------
-## DGP_NOISE_FRAC multiplies the LARGEST unit's latent sd. max is the least stable anchor available,
-## so the truth itself moves a great deal between datasets -- see the 5-95% spread printed above.
-## ETA_FRAC_EX2 matches the truth ON AVERAGE and cannot match it per dataset.
+## --- what the spread above does and does not mean --------------------------------------------------
+## The DGP's own noise sd does move a good deal between datasets, because the per-unit latent sds do.
+## What matters is that it moves TOGETHER with the anchor ETA_FRAC_EX2 is built on, so the ratio --
+## which is what that constant claims to be -- is far more stable than either quantity alone.
 
-cat(sprintf("\n  Note: the DGP's own noise sd spans %.3f to %.3f across datasets (5-95%%), because\n",
+cat(sprintf("\n  Note: the DGP's own noise sd spans %.3f to %.3f across datasets (5-95%%), because the\n",
             min(tab[, "noise_lo.5%"]), max(tab[, "noise_hi.95%"])))
-cat("  DGP_NOISE_FRAC is applied to max_n sd(latent_n). ETA_FRAC_EX2 matches the truth on average,\n")
-cat("  not per dataset. See EX2_PLAN.md section 5.\n")
+cat("  per-unit latent sds do. That is NOT inherited as extra variance downstream: the true noise sd\n")
+cat("  and mean sd(y_n) correlate at +0.93, so their ratio -- ETA_FRAC_EX2 -- has CV 0.09 against\n")
+cat("  0.25 for the noise sd itself, and the prior lands within 88-116% of the truth in 90% of\n")
+cat("  datasets against a prior whose own sd equals its location. See EX2_PLAN.md section 5.\n")
 
 ## --- guard ----------------------------------------------------------------------------------------
 ## Committed values read from ex2_config.r, so this checks the constant the study actually uses
