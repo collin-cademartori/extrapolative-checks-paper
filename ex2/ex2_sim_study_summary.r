@@ -15,7 +15,8 @@ load(.res_file)
 # statistics. They must come off before anything below: `error` is character, so the
 # abs(sim_study_ints) calls used to build the error and overfit frames fail outright on it, and the
 # rest would otherwise be swept into the pivots that split names on "<model>_<statistic>".
-# `sim` and `num_comp` are NOT dropped -- they are the study's design factors and are grouped on.
+# `level` and `num_comp` are NOT dropped -- they are the study's design factors and are grouped on.
+# (`level` replaced the old `sim` axis; see DGP_LEVELS in ex2_config.r for why.)
 # Report failed tasks first, so a study that lost tasks is not summarized as though it were whole.
 if ("failed" %in% names(sim_study_ints)) {
   n_failed <- sum(sim_study_ints$failed, na.rm = TRUE)
@@ -35,7 +36,7 @@ sim_study_ints <- sim_study_ints |> select(-any_of(c("rep", "failed", "error")))
 # model (paper Section 5). This is a purely numeric result -- the standardized
 # error and correlation summaries are instead conveyed by the plots below.
 perc_summary <- sim_study_ints |>
-  group_by(num_comp, sim) |>
+  group_by(num_comp, level) |>
   summarize(
     q5_perc_no_ints = quantile(no_ints_pred_perc, 0.05),
     q95_perc_no_ints = quantile(no_ints_pred_perc, 0.95),
@@ -50,9 +51,9 @@ cat("\n99% posterior-predictive interval coverage by condition (no-int vs with-i
 print(perc_summary, width = Inf)
 
 ## Statistic S2 predictive p-value (see paper Section 5), averaged separately for
-## each data generating condition (num_comp x sim).
+## each data generating condition (num_comp x level).
 loc_cor_summary <- sim_study_ints |>
-  group_by(num_comp, sim) |>
+  group_by(num_comp, level) |>
   summarize(
     q5_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.05),
     q95_loc_cor_no_ints = quantile(no_ints_loc_cor_pval, 0.95),
@@ -77,10 +78,10 @@ summarize_error <- function(stat) {
       names_pattern = "(.*)_(\\d+)$"
     ) |>
     mutate(
-      sim_f = as.factor(paste0("l == ", sim)),
+      lev_f = as.factor(paste0("l == ", level)),
       num_f = as.factor(paste0("b == ", num_comp))
     ) |>
-    group_by(time, sim_f, num_f) |>
+    group_by(time, lev_f, num_f) |>
     summarize(
       ni_mean = mean(.data[[paste0("no_ints_", stat)]]),
       ni_se   = sd(.data[[paste0("no_ints_", stat)]]) / sqrt(n()),
@@ -104,7 +105,7 @@ plot_error_bands <- function(df, y_label) {
     geom_ribbon(aes(x = time, ymin = it_lower, ymax = it_upper), alpha = 0.2, fill = "#858585") +
     geom_line(aes(x = time, y = ni_mean)) +
     geom_line(aes(x = time, y = it_mean), linetype = "dashed") +
-    facet_grid(vars(num_f), vars(sim_f), scales = "free_y") +
+    facet_grid(vars(num_f), vars(lev_f), scales = "free_y") +
     xlab("Post-Treatment Time") +
     ylab(y_label) +
     theme_bw() +
@@ -128,7 +129,7 @@ ggsave(abs_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints
 
 sim_study_overfit <- abs(sim_study_ints) |>
   pivot_longer(
-    cols = !c(num_comp, sim),
+    cols = !c(num_comp, level),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
     names_pattern = "^(no_ints|ints)_(.*)$"
@@ -156,7 +157,7 @@ sim_study_overfit <- abs(sim_study_ints) |>
     ),
     time = paste0("Time ", time)
   ) |>
-  group_by(time, model, sim) |>
+  group_by(time, model, level) |>
   summarize(
     mean_absz = mean(absz),
     mean_err = mean(errspur),
@@ -166,7 +167,7 @@ sim_study_overfit <- abs(sim_study_ints) |>
 overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_err, y = mean_absz), linewidth = 0.8) +
   geom_label(aes(label = model, x = mean_err, y = mean_absz), size = 3) +
-  facet_grid(vars(sim), vars(time), scales = "free") +
+  facet_grid(vars(level), vars(time), scales = "free") +
   xlab("Modeled Long-Run Correlation (Treated vs Spuriously Correlated Units)") +
   ylab("Average Standardized Error of Posterior\n Expected Treatment Effect") +
   scale_x_continuous(expand = expansion(mult = 0.6), n.breaks = 4) +

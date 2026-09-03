@@ -23,13 +23,13 @@ N_DATASETS <- 2000L
 
 ruv <- function(d) { v <- rnorm(d); v / sqrt(sum(v * v)) }
 
-gen_one <- function(N_comp_spur, sim) {
+gen_one <- function(N_comp_spur, level, sim = DGP_SIM) {
   N_unc <- DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp_spur
   K_gen <- 2 + DGP_K_UNC
   T_times <- DGP_T_TIMES
 
-  f_treat <- DGP_LEVEL_OFFSET + arima.sim(model = list(ar = 0.9), n = T_times)
-  f_alt <- (f_treat - DGP_LEVEL_OFFSET) +
+  f_treat <- level + arima.sim(model = list(ar = 0.9), n = T_times)
+  f_alt <- (f_treat - level) +
     c(rep(0, T_times - DGP_T_TREATED), rep(-DGP_F_TREAT_SD, DGP_T_TREATED))
 
   f_unc <- matrix(nrow = DGP_K_UNC, ncol = T_times)
@@ -63,26 +63,28 @@ gen_one <- function(N_comp_spur, sim) {
 ## --- what the DGP produces ----------------------------------------------------------------------
 ## Averaged over the study's own sweep grid, so the constants are not tuned to one cell of it.
 
-grid <- expand.grid(N_comp = c(2, 3), sim = c(0.7, 0.9))
+## The study's own sweep grid, so the constants are not tuned to one cell of it. `sim` is no
+## longer swept (fixed at DGP_SIM); the level gap replaced it -- see ex2_config.r.
+grid <- expand.grid(N_comp = c(2, 3), level = DGP_LEVELS)
 rows <- vector("list", nrow(grid))
 for (g in seq_len(nrow(grid))) {
   r <- replicate(N_DATASETS %/% nrow(grid), {
-    d <- gen_one(grid$N_comp[g], grid$sim[g])
+    d <- gen_one(grid$N_comp[g], grid$level[g])
     c(rms = mean(apply(d$Y, 2, function(y) sqrt(mean(y^2)))),
       sd  = mean(apply(d$Y, 2, sd)),
       noise = d$noise_sd,
       grand = mean(d$Y),
       sd_means = sd(colMeans(d$Y)))
   })
-  rows[[g]] <- c(N_comp = grid$N_comp[g], sim = grid$sim[g], rowMeans(r),
+  rows[[g]] <- c(N_comp = grid$N_comp[g], level = grid$level[g], rowMeans(r),
                  noise_lo = quantile(r["noise", ], 0.05), noise_hi = quantile(r["noise", ], 0.95))
 }
 tab <- do.call(rbind, rows)
 
 cat("\n=== What ex2's DGP generates, per sweep cell ===\n")
-cat(sprintf("%8s %6s %9s %9s %9s %18s\n", "N_comp", "sim", "E[RMS]", "E[sd]", "E[noise]", "noise 5-95%"))
+cat(sprintf("%8s %6s %9s %9s %9s %18s\n", "N_comp", "level", "E[RMS]", "E[sd]", "E[noise]", "noise 5-95%"))
 for (i in seq_len(nrow(tab))) {
-  cat(sprintf("%8d %6.2f %9.2f %9.2f %9.3f %8.3f - %-8.3f\n", tab[i, "N_comp"], tab[i, "sim"],
+  cat(sprintf("%8d %6.1f %9.2f %9.2f %9.3f %8.3f - %-8.3f\n", tab[i, "N_comp"], tab[i, "level"],
               tab[i, "rms"], tab[i, "sd"], tab[i, "noise"],
               tab[i, "noise_lo.5%"], tab[i, "noise_hi.95%"]))
 }

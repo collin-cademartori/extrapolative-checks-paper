@@ -219,16 +219,18 @@ unpermute_untreated <- function(v, perm) {
 sim_model_intercepts <- function(
     N_unc = 2, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = 2,
     T_times = DGP_T_TIMES, T_treated = DGP_T_TREATED,
-    K_unc = DGP_K_UNC, sim = 0.9) {
+    K_unc = DGP_K_UNC, sim = DGP_SIM, level_offset) {
   N_units <- 1 + N_comp_true + N_comp_spur + N_unc
   K_gen <- 2 + K_unc
 
-  f_treat <- DGP_LEVEL_OFFSET + arima.sim(model = list(ar = 0.9), n = T_times)
+  # level_offset is a SWEPT condition, passed in per task -- see DGP_LEVELS in ex2_config.r for
+  # why it is on the sweep and what it is worth. It used to be a fixed literal here.
+  f_treat <- level_offset + arima.sim(model = list(ar = 0.9), n = T_times)
   f_treat_sd <- DGP_F_TREAT_SD
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over the
   # treatment window -- the driver of the "spurious" comparators.
-  f_alt <- (f_treat - DGP_LEVEL_OFFSET) +
+  f_alt <- (f_treat - level_offset) +
     c(rep(0, T_times - T_treated), rep(-f_treat_sd, T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated with the
@@ -278,7 +280,7 @@ sim_model_intercepts <- function(
   return(list(Y = Y, groups = groups))
 }
 
-run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plot_iters = 0,
+run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, plot_iters = 0,
                                progress_log = NULL) {
   # Fixed total of 8 units; N_comp spurious comparators trade off against the
   # uncorrelated fillers (1 treated + 2 true + N_comp spurious + N_unc = 8), so the
@@ -286,7 +288,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plo
   N_unc <- DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp
   gen <- sim_model_intercepts(
     N_unc = N_unc, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = N_comp, K_unc = DGP_K_UNC,
-    sim = sim, T_times = DGP_T_TIMES
+    sim = DGP_SIM, level_offset = level, T_times = DGP_T_TIMES
   )
   test_ys <- gen$Y
 
@@ -362,7 +364,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plo
       n_chains = 4
     ),
     seeds = fit_seeds[1, ],
-    label = sprintf("sim %.2g num_comp %d rep %d no_ints", sim, N_comp, rep_i),
+    label = sprintf("level %g num_comp %d rep %d no_ints", level, N_comp, rep_i),
     progress_log = progress_log, ladder = EX2_LADDER
   )
   fits$no_ints$name <- "no_ints"
@@ -384,7 +386,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plo
       n_chains = 4
     ),
     seeds = fit_seeds[2, ],
-    label = sprintf("sim %.2g num_comp %d rep %d ints", sim, N_comp, rep_i),
+    label = sprintf("level %g num_comp %d rep %d ints", level, N_comp, rep_i),
     progress_log = progress_log, ladder = EX2_LADDER
   )
   fits$ints$name <- "ints"
@@ -494,7 +496,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plo
       )
       ggsave(
         int_plot,
-        file = sprintf("../figs/sim_int_figs/int_fit_%s_sim%.2g_nc%d_rep%d.png", m, sim, N_comp, rep_i),
+        file = sprintf("../figs/sim_int_figs/int_fit_%s_lv%g_nc%d_rep%d.png", m, level, N_comp, rep_i),
         width = 5, height = 4, create.dir = TRUE
       )
     }
@@ -503,7 +505,7 @@ run_sim_intercepts <- function(N_comp, sim, K_latent = K_LATENT, rep_i = NA, plo
   return(res)
 }
 
-run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, seed, plot_iters = 3) {
+run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, levels, seed, plot_iters = 3) {
   # Worker-called functions must be exported explicitly (foreach only auto-exports
   # locals like K_latent); posterior is attached for sample_model()'s unqualified
   # extract_variable_array() call, ggplot2 for the per-condition figures.
@@ -520,18 +522,18 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, s
   # Flatten the sim x N_comp x rep design into a single (non-nested) foreach, so
   # %dorng% gives each task a reproducible RNG stream invariant to worker count.
   # Invariant: keep this a single, non-nested loop.
-  grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, sim = sims)
+  grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, level = levels)
 
   cat(sprintf(
     paste0(
       "\n=== Example 2 simulation study ===\n",
-      "  conditions : sim {%s} x num_comp {%s}  (%d)\n",
+      "  conditions : level {%s} x num_comp {%s}  (%d)\n",
       "  reps/cond  : %d\n",
       "  tasks      : %d  (2 model fits each)\n",
       "  workers    : %d   seed: %d\n\n"
     ),
-    paste(sims, collapse = ", "), paste(N_comps, collapse = ", "),
-    length(sims) * length(N_comps), reps, nrow(grid),
+    paste(levels, collapse = ", "), paste(N_comps, collapse = ", "),
+    length(levels) * length(N_comps), reps, nrow(grid),
     getDoParWorkers(), seed
   ))
   # Absolute log path, so workers write it where the master expects regardless of
@@ -542,7 +544,7 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, s
   # Per-task checkpoints, as in ex1. A single failing task used to abort the whole study via %dorng%
   # and take every completed task with it. Each task now writes its own row as soon as it finishes,
   # and a rerun picks up the rows that already exist instead of recomputing them. This matters more
-  # here than in ex1: the grid is reps x N_comps x sims tasks, each with two fits.
+  # here than in ex1: the grid is reps x N_comps x levels tasks, each with two fits.
   # The directory is keyed to the study seed and the grid size, so changing either starts a fresh
   # set rather than silently reusing rows from a different configuration; delete it by hand to force
   # a full recompute under the same configuration.
@@ -562,7 +564,7 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, s
 
   study_res <-
     foreach(
-      rep_i = grid$rep, N_comp = grid$N_comp, sim = grid$sim, task_i = seq_len(nrow(grid)),
+      rep_i = grid$rep, N_comp = grid$N_comp, level = grid$level, task_i = seq_len(nrow(grid)),
       # bind_rows rather than rbind: a failed task contributes a short row, and rbind would error on
       # the column mismatch instead of recording the failure.
       .combine = function(...) dplyr::bind_rows(...),
@@ -572,30 +574,30 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, sims, s
       # The full condition triple goes in the filename, so a checkpoint can never be reused for a
       # different cell of the grid even if the grid ordering were to change.
       ckpt_file <- file.path(ckpt_dir,
-        sprintf("task_%05d_sim%.2g_nc%d_rep%04d.rds", task_i, sim, N_comp, rep_i))
+        sprintf("task_%05d_lv%g_nc%d_rep%04d.rds", task_i, level, N_comp, rep_i))
       if (file.exists(ckpt_file)) {
         readRDS(ckpt_file)
       } else {
         unit_res <- tryCatch(
           as.data.frame(c(
             run_sim_intercepts(
-              N_comp = N_comp, sim = sim, K_latent = K_latent,
+              N_comp = N_comp, level = level, K_latent = K_latent,
               rep_i = rep_i, plot_iters = plot_iters, progress_log = progress_log
             ),
-            list(sim = sim, num_comp = N_comp)
+            list(level = level, num_comp = N_comp)
           )),
           error = function(e) {
-            cat(sprintf("[%s] sim %.2g num_comp %d rep %d FAILED: %s\n",
-              format(Sys.time(), "%H:%M"), sim, N_comp, rep_i, conditionMessage(e)),
+            cat(sprintf("[%s] level %g num_comp %d rep %d FAILED: %s\n",
+              format(Sys.time(), "%H:%M"), level, N_comp, rep_i, conditionMessage(e)),
               file = progress_log, append = TRUE)
-            data.frame(sim = sim, num_comp = N_comp, error = conditionMessage(e))
+            data.frame(level = level, num_comp = N_comp, error = conditionMessage(e))
           }
         )
         unit_res$rep <- rep_i
         if (is.null(unit_res$error)) unit_res$error <- NA_character_
         unit_res$failed <- !is.na(unit_res$error)
         saveRDS(unit_res, ckpt_file)
-        worker_progress(sprintf("sim %.2g  num_comp %d  rep %d", sim, N_comp, rep_i), logfile = progress_log)
+        worker_progress(sprintf("level %g  num_comp %d  rep %d", level, N_comp, rep_i), logfile = progress_log)
         unit_res
       }
     }
@@ -620,7 +622,7 @@ if (STUDY_MODE == "fast")
 sim_study_ints <- run_sim_study_intercepts(
   reps = study_reps,
   N_comps = c(2, 3),
-  sims = c(0.7, 0.9),
+  levels = DGP_LEVELS,
   K_latent = K_LATENT,
   seed = 52918,
   plot_iters = 50
