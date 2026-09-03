@@ -29,16 +29,14 @@ DGP_K_UNC <- 1
 ## open question.
 DGP_F_TREAT_SD <- 1.9
 
-## Level of the treated factor: f_treat = DGP_LEVEL_OFFSET + AR(0.9), and f_alt = f_treat -
-## DGP_LEVEL_OFFSET, so this IS the level gap between the treated/true group and the spurious group.
+## SWEPT AXIS 1: the level gap. f_treat = level + AR(0.9) and f_alt = f_treat - level, so this IS
+## the gap between the treated/true group's long-run average and the spurious group's. It is the
+## quantity that makes location informative about correlation, which is exactly the entanglement
+## the unit-intercepts model assumes away -- so it belongs on the sweep rather than being a fixed
+## literal, which is what it was (a bare 6, appearing twice inside sim_model_intercepts).
 ##
-## It was a bare literal 6 appearing twice inside sim_model_intercepts, which understated its role:
-## it is effectively a tuning parameter for this example's headline contrast.
-##
-## MEASURED by ex2_level_delta_screen.r: 30 datasets, each fitted under BOTH levels and both effect
-## priors (common random numbers -- f_alt = f_treat - L cancels the offset and per-unit sd is
-## level-invariant, so raising L shifts unit n by exactly L * Lambda[n,1] and nothing else). Posterior
-## mean cor_sq with the SPURIOUS units, averaged over the two effect priors:
+## MEASURED by ex2_level_delta_screen.r: 30 datasets, each fitted under both levels and both effect
+## priors under common random numbers. Posterior mean cor_sq with the SPURIOUS units:
 ##
 ##     level gap      no_ints        ints          gap (ints - no_ints)
 ##        1            0.635         0.684              0.049
@@ -46,21 +44,32 @@ DGP_F_TREAT_SD <- 1.9
 ##
 ##     level effect on the gap:  +0.171   se 0.021   95% CI [+0.130, +0.212]
 ##
-## no_ints carries the whole effect; ints does not move. no_ints has no gamma, so a unit's level must
-## come out of Lambda * Phi_means -- the same loadings that generate correlation -- and separating
-## levels forces Lambda_spurious away from Lambda_treated. ints puts the level in gamma and is immune.
-## The same mechanism shows on the other side: over the same range no_ints' cor_sq with the TRUE
-## comparators RISES +0.101 (se 0.008, 0.874 -> 0.975) while ints moves +0.001 (se 0.001).
+## no_ints carries the whole effect; ints does not move. no_ints has no gamma, so a unit's level
+## must come out of Lambda * Phi_means -- the same loadings that generate correlation -- and
+## separating levels forces Lambda_spurious away from Lambda_treated. ints puts the level in gamma
+## and is immune. The same mechanism shows on the other side: over the same range no_ints' cor_sq
+## with the TRUE comparators RISES +0.101 (se 0.008) while ints moves +0.001 (se 0.001).
 ##
-## An earlier 2-datasets-per-level sweep reported this same direction, but its numbers were not
-## usable -- the between-dataset sd of cor_sq is 0.06 (ints) to 0.14 (no_ints), so an unpaired
-## handful of datasets cannot resolve a 0.17 effect, and that sweep also predated the
-## pathfinder_init.r RNG fix. The paired design above is what the numbers here come from.
+## 5 and 10, replacing the old fixed 6. 5 keeps a moderate cell close to what the study used before
+## so earlier runs stay roughly comparable; 10 is where the effect was actually measured.
+DGP_LEVELS <- c(5, 10)
+
+## SWEPT AXIS 2 is N_comp, the number of spurious comparators (set in ex2_sim_study.r's call).
 ##
-## So at a small offset the two arms nearly agree and the example has little to show; at a large one
-## they separate sharply. 6 sits mid-range. That is a defensible choice but it is a CHOICE, and the
-## write-up should say so rather than let a reader assume the separation is purely a model property.
-DGP_LEVEL_OFFSET <- 6
+## The `sim` axis it REPLACED -- the strength of the spurious units' pre-treatment correlation,
+## swept over {0.7, 0.9} -- was dropped because it does almost nothing. Measured on the archived
+## 200-rep 2x2 (200 reps per cell), main effect of each axis on the ints - no_ints contrast:
+##
+##                            sim 0.7 -> 0.9        num_comp 1 -> 3
+##     |delta| error gap     -0.0002  p 0.97       +0.0099  p 0.084
+##     |z| gap               -0.0002  p 0.99       +0.0286  p 0.074
+##     acor_err gap          -0.0047  p 0.010      -0.0137  p <0.0001
+##
+## sim is indistinguishable from zero on the estimand and three times weaker where both register,
+## while the level gap above dwarfs them both. So sim is now FIXED at the stronger of its two old
+## values. (Caveat: that 2x2 predates absolute error mode, the shared delta scale and the anchored
+## intercept prior, so it ranks the axes rather than measuring them under the current config.)
+DGP_SIM <- 0.9
 
 ## Observation-noise sd, as a fraction of the LARGEST unit's latent sd. `max` is the least stable
 ## anchor available: measured over 300 datasets the realised noise sd ranges 0.103 to 0.446 (mean
@@ -107,7 +116,13 @@ INT_FRAC <- 0.9
 ## sd(colMeans(y)) as a multiple of mean sd(y_n), measured on the DGP. Needed only by
 ## ex2_pred_checks.r, which works in units where mean sd(y_n) = 1 and so cannot measure the level
 ## spread itself. Derived and guarded by ex2_derive_scales.r.
-LEVEL_SPREAD_FRAC <- 2.05
+##
+## AVERAGED OVER THE SWEEP, so it now covers both level cells rather than one fixed offset. It moved
+## 2.05 -> 2.50 when the level gap went from a fixed 6 to a swept {5, 10}: the numerator scales with
+## the level gap and the mean gap rose to 7.5. ETA_FRAC_EX2 did not move, because mean sd(y_n) is
+## invariant to adding a constant to a unit's level. The guard in ex2_derive_scales.r caught this
+## automatically when the sweep changed -- which is what it is for.
+LEVEL_SPREAD_FRAC <- 2.50
 
 ## ---- error scale ------------------------------------------------------------------------------
 ## eta is a single ABSOLUTE observation-error sd on the data's own scale, shared by both arms.
@@ -145,4 +160,11 @@ ETA_CV_EX2 <- 0.5
 ## by +0.023 (se 0.004), real but roughly seven times smaller than the level effect above. It costs
 ## accuracy on the estimand it prices -- mean |delta| error rises 0.221 -> 0.293 (no_ints) and
 ## 0.325 -> 0.537 (ints) over that range -- so there is no case for widening past 1.0.
-DELTA_FRAC_EX2 <- 1.0
+##
+## 0.5, matching ex1's DELTA_FRAC and for the same reason: an effect of a full outcome SD would be
+## enormous in most applied settings, so half an SD is the honest elicitation. Justified as a belief
+## about effect sizes, NOT by what it does to the study's contrast -- the true effect is zero here,
+## so any tightening of a zero-centred prior flatters both arms automatically. Measured, widening it
+## slightly INCREASES the ints - no_ints gap (see above), so this change costs a little contrast and
+## is made anyway because the elicitation is what should decide it.
+DELTA_FRAC_EX2 <- 0.5
