@@ -20,6 +20,16 @@ sample_model <- function(
   stopifnot(type %in% c("prior_pred", "posterior"))
   stopifnot(0 < autocor_a)
   stopifnot(0 < autocor_b)
+  # STRICTLY less than: the saturated case K = M is excluded deliberately. At K = M the loadings
+  # are a full invertible lower-triangular matrix, so Phi * Lambda' spans EVERY T x M matrix, the
+  # signal is unrestricted, and the likelihood is UNBOUNDED as the error scale goes to zero along
+  # the interpolating ridge -- the same pathology as a normal mixture whose component variance
+  # collapses onto a data point. Measured, not assumed: at K = M = 8 Stan's optimizer finds that
+  # mode in under half a second (eta ~ 2e-4, residual 0 to four decimals) from every random start.
+  # The POSTERIOR is still proper and MCMC explores its bulk correctly, so this is not a hard
+  # error -- but pathfinder_init = TRUE, which every study fit uses, is optimization-based and can
+  # seed chains into that trap. Neither study needs K = M (ex1 fits 4, ex2 fits 3), so the guard
+  # costs nothing and removes a real hazard. ife_named.stan's own declaration allows K <= M.
   stopifnot(K_latent < N_units)
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))

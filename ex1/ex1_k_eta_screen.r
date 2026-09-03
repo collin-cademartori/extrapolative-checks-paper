@@ -102,7 +102,55 @@ CONFIGS <- list(
   ## predictive check missed. eta_prior_tail is recorded as NA for these two configs rather than
   ## reporting the constant that a point mass trivially produces.
   F1 = list(K = 4L, eta = 0.10,  rho = RHO_STAT, smult = 2.00, fix = TRUE),
-  F2 = list(K = 4L, eta = 0.286, rho = RHO_STAT, smult = 2.00, fix = TRUE)
+  F2 = list(K = 4L, eta = 0.286, rho = RHO_STAT, smult = 2.00, fix = TRUE),
+  ## MAXIMUM FLEXIBILITY. K = 7 is the ceiling here, NOT 8: ife_named.stan declares
+  ## K_latent <= M_units, but sample_model.r line 23 is stricter -- stopifnot(K_latent < N_units) --
+  ## and that guard is unexplained, present since the original code import with no comment. At
+  ## K = M = 8 the loadings would be a full invertible lower-triangular matrix and
+  ## Phi %*% t(Lambda) would range over EVERY T x M matrix, making the signal unrestricted and
+  ## eta unidentified; the guard may exist precisely to keep the model out of that saturated
+  ## regime. Do not relax it without deciding that question.
+  ##
+  ## What pins it, on the evidence so far, is that the posterior behaves like a subspace chosen
+  ## WITHOUT regard to the noise. A non-adaptive K-dim subspace absorbs exactly K/T of each unit's
+  ## noise, giving eta = 2 * sqrt(1 - K/T): 1.789 at K = 4 (observed 1.787, dead on), 1.673 at
+  ## K = 6, 1.612 at K = 7 -- approaching the ~1.5 floor eta refuses to go below.
+  ##
+  ## Each constraint was relaxed SEPARATELY and none moved it much (rho free 1.740, sigma 3.0
+  ## 1.747, eta prior halved 1.582, all at K = 4). X1 relaxes all of them at once, which is the
+  ## only untested combination: full rank, rough factors, triple amplitude, and a prior begging eta
+  ## downward. If eta still stops near 1.5 here, no explanation we currently have covers it.
+  X1 = list(K = 7L, eta = 0.05, rho = c(1, 1),  smult = 3.00),
+  ## X2 isolates the K/T story: K at its ceiling with everything else committed.
+  X2 = list(K = 7L, eta = 0.10, rho = RHO_STAT, smult = 2.00),
+  ## K = M = 8, the SATURATED case: the signal is unrestricted and can interpolate the data exactly,
+  ## so eta is expected to be weakly identified or unidentified. That is the point -- if eta still
+  ## stops near 1.5 with the likelihood free to drive it to zero, the floor is not a capacity limit
+  ## and none of the explanations we have covers it. Reachable only since sample_model.r's guard was
+  ## relaxed from K < N_units to K <= N_units; read the diagnostics before trusting these.
+  X3 = list(K = 8L, eta = 0.05, rho = c(1, 1),  smult = 3.00),
+  X4 = list(K = 8L, eta = 0.10, rho = RHO_STAT, smult = 2.00),
+  ## X3 with the NONSTATIONARY arm's error prior (0.286 = the DGP's own scale) and nothing else
+  ## changed. X3 vs nonstat-at-K=8 is confounded: the arms differ in specification AND in eta prior
+  ## (0.05 against 0.286). X5 removes the second difference, so X5 vs X3 is the error prior alone
+  ## and X5 vs nonstat is the specification alone.
+  X5 = list(K = 8L, eta = 0.286, rho = c(1, 1), smult = 3.00),
+  ## X3 with eta FIXED rather than estimated, at the same low location. Removes the eta balance
+  ## entirely, so the likelihood is forced to reward interpolation as hard as it can. The question
+  ## is whether the model then CAN interpolate:
+  ##   pred_mad collapses toward the fixed eta -> the flexibility was there all along and only the
+  ##     posterior's weighting of an improbable Phi held it back (the Bayesian Occam factor);
+  ##   pred_mad stays near 1.3 while coverage falls apart -> the latent prior genuinely cannot
+  ##     produce the required Phi, a harder constraint than a weighting.
+  X6 = list(K = 8L, eta = 0.05, rho = c(1, 1), smult = 3.00, fix = TRUE),
+  ## X3 with rho's prior MASS MOVED TO ZERO -- a single-variable change from X3 (Beta(1,1)).
+  ## Stan's optimizer showed the joint mode is at eta ~ 2e-4 with exact interpolation, so the
+  ## likelihood does prefer vanishing eta overwhelmingly; what keeps the posterior at ~1.2 is that
+  ## almost no PRIOR MASS sits on the Phi that interpolate. Interpolating needs high-frequency
+  ## factors, and under Beta(1,1) drawing all eight rough at once is ~1e-8 of the prior. Beta(1,10)
+  ## (mean 0.09) makes that corner ordinary rather than exceptional. If the prior-mass account is
+  ## right this should move eta further than anything else tried.
+  X7 = list(K = 8L, eta = 0.05, rho = c(1, 10), smult = 3.00)
 )
 ## Default every config to an ESTIMATED error scale unless it says otherwise.
 CONFIGS <- lapply(CONFIGS, function(c_) { if (is.null(c_$fix)) c_$fix <- FALSE; c_ })
@@ -111,7 +159,7 @@ CONFIGS <- lapply(CONFIGS, function(c_) { if (is.null(c_$fix)) c_$fix <- FALSE; 
 ## else runs on both batches.
 CONFIG_BATCHES <- list(C0 = 1:2, C1 = 1L, C2 = 1:2, C3 = 1L, C4 = 1:2,
                        C5 = 1:2, S1 = 1:2, S2 = 1:2, S3 = 1:2,
-                       E1 = 1:2, E2 = 1:2, F1 = 1:2, F2 = 1:2)
+                       E1 = 1:2, E2 = 1:2, F1 = 1:2, F2 = 1:2, X1 = 1:2, X2 = 1:2, X3 = 1:2, X4 = 1:2, X5 = 1:2, X6 = 1:2, X7 = 1:2)
 
 stopifnot(CONFIGS$C0$K == K_LATENT, abs(CONFIGS$C0$eta - ETA_FRAC_STAT) < 1e-12,
           identical(CONFIGS$C0$rho, RHO_STAT), CONFIGS$C0$smult == SIGMA_MULT_STAT,
@@ -144,6 +192,13 @@ make_batch <- function(seed, n) {
 batches <- lapply(BATCHES, function(b) make_batch(b$seed, b$n))
 tasks <- do.call(rbind, lapply(seq_along(batches),
   function(bi) data.frame(bi = bi, unit = batches[[bi]]$units)))
+## NDS (or the second CLI argument) caps the dataset count, for a quick look before committing to
+## a full run. It takes the FIRST rows of batch 1, which are the same datasets every time.
+.cap <- suppressWarnings(as.integer(Sys.getenv("NDS", if (is.na(.nds)) "" else as.character(.nds))))
+if (!is.na(.cap) && .cap > 0 && .cap < nrow(tasks)) {
+  tasks <- tasks[seq_len(.cap), , drop = FALSE]
+  cat(sprintf("  NDS set: %d dataset(s) only\n", .cap))
+}
 N_TOTAL <- nrow(tasks)
 
 cat(sprintf("\n=== %d datasets (batch 1: %d, batch 2: %d) from the study DGP ===\n",
