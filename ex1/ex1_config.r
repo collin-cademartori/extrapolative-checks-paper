@@ -1,124 +1,85 @@
 ## Shared model configuration for example 1.
 ##
-## Sourced by ex1_sim_study.r (and its workers), ex1_pred_checks.r, ex1_rsq_priors.r and
-## ex1_derive_scales.r, so the study, the figures and the derivation cannot disagree about what the
-## models are. They had, three separate ways: the nonstationary arm's rho prior drifted to Beta(7,3)
-## while the DGP kept Beta(8,2); the DGP ran at alpha_diag = 0 while every fit used 20; and
-## ex1_derive_scales.r checked its constants against ETA_FRAC = 0.1 after the study had moved to
-## 0.2. Each was invisible until measured.
+## Sourced by other files in /ex1 so that common model assumptions are consistent throughout.
 ##
-## WHAT LIVES HERE: dimensionless multiples and the model's shape -- quantities that mean the same
-## thing in every context.
-##
-## WHAT DOES NOT: anything carrying the units of a particular dataset. The study multiplies these by
-## per-dataset rms_y / sd_y; the figures apply them in units where the anchor is 1; the derivation
-## applies them to its own forward simulator. Sampler settings (iterations, chains, the escalation
-## ladder) are the study's alone and stay there.
+## Some model hyperparameters are expressed here as dimensionless ratios. In inference, these
+## are multiplied by empirical point estimates of the denominators.
 
-## ---- data-generating process ------------------------------------------------------------------
-## The truth the study measures its arms against: an integrated latent structure with sigma = 1 and
-## an iid level-error sd of 2. The nonstationary arm shares DGP_RHO and ALPHA_DIAG deliberately --
-## being the correctly specified reference arm means matching the DGP in kind, not merely in
-## functional form.
+## ---- data-generating process ----------------------------------------------------------------------
+## Ground truth for simulation studies: nonstationary factors with sigma = 1 and an iid error sd = 2.
+## In simulation study, nonstationary model inherits DGP_RHO and ALPHA_DIAG, matching the DGP.
 DGP_SIGMA <- 1
 DGP_ETA <- 2
-DGP_RHO <- c(7,3)
+DGP_RHO <- c(7, 3)
 
-## ---- model shape ------------------------------------------------------------------------------
+## ---- model shape ----------------------------------------------------------------------------------
 N_UNITS <- 8
 T_TIMES <- 20
 K_LATENT <- 4
 NUM_TREATED <- 5
 
-## Zero-avoiding inverse-gamma on the loading diagonal, repelling the collapsed-loading minor modes.
-## An identification and sampling device, not a modelling claim -- a prior predictive check cannot
-## see it, so it is not justified by one.
+## Shape parameter for zero-avoiding inverse-gamma on the loading diagonal.
+## Reduces probability of minor modes at zero and expresses belief that all factors should be used
+## to explain data.
 ALPHA_DIAG <- 20
 
-## ---- autocorrelation priors ---------------------------------------------------------------------
-RHO_NONSTAT <- DGP_RHO        # the reference arm is handed the DGP's own persistence prior
-RHO_STAT <- c(98, 2)          # near-unit-root: mean 0.98
+## ---- autocorrelation priors -----------------------------------------------------------------------
+RHO_NONSTAT <- DGP_RHO        # nonstationary model uses DGP's factor autocorrelation prior
+RHO_STAT <- c(98, 2)          # stationary model gets large autocorrelations to mimic nonstationarity
 
-## ---- scale multiples ----------------------------------------------------------------------------
-## Every scale is a fraction of an anchor measured on the data's own scale, so the arms are
-## comparable to each other and to the truth. See ex1_derive_scales.r for where each comes from and
-## for the guard that fails loudly if the model config moves out from under them.
+## ---- sigma multiples ------------------------------------------------------------------------------
+## In simulation studies, sigma is a multiple of the data root mean square.
+## Parameter sigma has different meanings in the two models, so multiples are used to refer
+## sigma to a common baseline and ensure scaling is comparable across models.
+## This ensures that comparisons between models reflect differences between the factor process
+## assumptions, not incidental differences in the scaling of their latent components.
+## Script ex1_derive_scales.r derives these constants from scaling invariants and errors
+## if the constants recorded here no longer satisfy the desired invariants.
 ##
-##   SIGMA_MULT_NONSTAT  a units conversion. In the nonstationary branch sigma scales the
-##                       DIFFERENCED signal, so a level anchor must be converted; integrating a
-##                       T = 20 window costs about an order of magnitude. It is the self-consistency
-##                       fixed point, and because this arm shares the DGP's rho prior the same value
-##                       also hands it the DGP's own sigma and eta.
+##   SIGMA_MULT_NONSTAT  In the nonstationary branch sigma scales the differenced
+##                       signal; integrating a T = 20 window increases the outcomes scale
+##                       by about an order of magnitude.
+##                       Coupled to DGP_RHO -- a DGP with lower rho integrates to a
+##                       smaller RMS, so the multiple rises to compensate.
 ##
-##                       1/6.2, not the 1/7 it was. It MOVES WITH DGP_RHO, and did not follow when
-##                       that went Beta(8,2) -> Beta(7,3): a less persistent DGP integrates to a
-##                       smaller RMS, so the multiple must rise. Measured, E[RMS] at sigma = 1 is
-##                       7.01 under Beta(8,2) and 6.19 under Beta(7,3), so 1/7 handed this arm
-##                       sigma 0.883 and eta 1.766 against a truth of 1.000 and 2.000 -- the
-##                       REFERENCE arm running 12% cramped, which flatters every contrast measured
-##                       against it. At 1/6.2 it receives 1.000 and 2.000. ex1_derive_scales.r's
-##                       guard is what caught this; it had been failing since the rho change.
-##
-##   SIGMA_MULT_STAT     NOT a conversion. Under this misspecification no multiple matches the
-##                       data's RMS and its SD at once, so it chooses: it matches the SD. A
-##                       near-unit-root AR(1) realises only ~40% of its long-run SD over T = 20, so
-##                       setting sigma to the expected SD implies series far flatter than intended.
-##                       Matching the SD overshoots the RMS; matching the RMS would PROHIBIT the
-##                       dispersion the analyst expects, and excluding a moment is a stronger
-##                       assumption than exceeding one.
+##   SIGMA_MULT_STAT     When rho is high in the stationary model, the sample SD of the
+##                       latent factors over T = 20 points is substantially less than the
+##                       long-run SD, so sigma is inflated to compensate.
+##                       This tends to overestimate the RMS of the data, but not to the
+##                       point of ruling it out.
+##                       Coupled to ETA_FRAC_STAT, which scales the error term and also
+##                       affects the outcome SD.
 SIGMA_MULT_NONSTAT <- 1 / 6.2
 SIGMA_MULT_STAT <- 2
 
-## Error scales, as fractions of the anchor. eta is on the LEVEL scale in both branches --
-## ife_named.stan applies the sqrt(2) differencing inflation itself -- so these take no differencing
-## correction, and a caller-side one would double-count.
+## Error scales, as fractions of average RMS. Eta is expressed on the outcome scale in both
+## models, not on the differenced scale in the nonstationary case like sigma.
 ##
-##   ETA_FRAC_NONSTAT  the DGP's own level-error sd, 2 x this arm's sigma.
-##   ETA_FRAC_STAT     PROVISIONAL, still being settled. It is not a scale conversion but a
-##                     prior-predictive-check choice about how much a linear trend may be
-##                     attenuated: a large error flattens any trend, so only a small one lets a
-##                     stationary model put enough prior mass on high |cor(y, t)| to be plausible.
-##                     ex1_rsq_priors.r is where it is justified.
+##   ETA_FRAC_NONSTAT  the DGP's own iid error sd, 2 x this arm's sigma.
 ##
-##                     It is COUPLED to SIGMA_MULT_STAT: sd(y)^2 ~ sd(signal)^2 + eta^2, so a larger
-##                     error contributes realised dispersion and less sigma is needed to match the
-##                     expected SD. Measured, the SD-matching multiple runs 1.98 / 1.95 / 1.85 /
-##                     1.67 as ETA_FRAC_STAT goes 0.05 / 0.1 / 0.2 / 0.3 -- nearly flat up to 0.2,
-##                     so the pair is well identified there, but a move to 0.3 would put
-##                     SIGMA_MULT_STAT 17% off and trip the guard in ex1_derive_scales.r. The two
-##                     constants are justified jointly, never one at a time.
+##   ETA_FRAC_STAT     Justified by prior predictive check of the correlation between time
+##                     and outcome. Large error levels attenuate this correlation, so must
+##                     be small enough for stationary model to mimic nonstationarity in the
+##                     short run and pass predictive check.
+##                     Coupled to SIGMA_MULT_STAT since the combination of these two scales
+##                     determines the overall outcome scale.
 ETA_FRAC_NONSTAT <- 2 * SIGMA_MULT_NONSTAT
 ETA_FRAC_STAT <- 0.1
 
-## Prior scale for the treatment effect, SHARED by every arm so they differ in their model of the
-## DATA, not in their prior over the ESTIMAND. Each arm used to inherit its own sigma[1], which is
-## not a common scale -- sigma is a differenced innovation scale in the nonstationary branch and a
-## long-run marginal SD in the stationary one. That gave the nonstationary arm 1.00 against the
-## stationary arms' 14.05 (19.9x once the cumsum construction is accounted for), a gap on the very
-## quantity the study compares them on; and since the true effect here is exactly zero, the tighter
-## prior shrank the reference arm toward the truth for free.
-##
-## Anchored on mean sd(y_n), not RMS: an effect is a CHANGE in the series, so the yardstick is how
-## much a typical unit moves, not how far it sits from zero.
-##
-## 0.5, not 1.0. This is an ELICITATION, not a tuning result: a treatment effect equal to a full
-## standard deviation of the outcome would be enormous by the standards of most applied programs,
-## so a prior placing half its mass beyond that is not what an analyst believes. Half a sample SD
-## is the honest statement of "effects are usually smaller than the variation already in the data".
-##
-## It is deliberately NOT justified by its effect on the study's contrast. The true effect here is
-## exactly zero, so ANY tightening of a prior centred at zero moves both arms toward the truth and
-## flatters the noisier one -- the contrast would improve for a reason that has nothing to do with
-## whether 0.5 is a defensible belief. Both arms share this value (see the note above), so the
-## comparison is unaffected either way.
+## Spread of the truncated-normal prior on eta, as a coefficient of variation, shared by
+## stationary and nonstationary models.
+ETA_CV_EX1 <- 1.0
+
+## Prior scale for the treatment effect, multiplied by the average data SD.
+## Expresses idea that treatment effects are typically smaller than the scale of the data.
+## Shared by stationary and nonstationary models, ensuring identical treatment effect priors
+## so that differences in posterior inference are not confounded with differences in the prior.
 DELTA_FRAC <- 0.5
 
-## Realised sd(y) per unit of sigma, for the stationary configuration over a T_TIMES window. A
-## MEASURED property of the model, not a choice: a near-unit-root AR(1) realises far less dispersion
-## over a short window than its long-run marginal SD, because the sample mean absorbs the
-## low-frequency wandering. It is what makes "set sigma to the SD you expect" wrong by a factor of
-## three, and it is the constant ex1_sd_priors.r turns into a figure.
-##
-## Derived and guarded by ex1_derive_scales.r, so it cannot silently go stale if T_TIMES, K_LATENT,
-## ALPHA_DIAG, RHO_STAT or ETA_FRAC_STAT move -- it depends on all of them.
+## Realised outcome SD over sigma, for the stationary configuration over T = 20 window.
+## Outcome SD is substantially lower than long-run SD in stationary model when
+## autocorrelation is high due to large dependence on starting point.
+## This is a measured property of the model which is verified in the derivation script
+## ex1_derive_scales.r.
+## Coupled to T_TIMES, K_LATENT, ALPHA_DIAG, RHO_STAT and ETA_FRAC_STAT.
 SD_PER_SIGMA <- 0.322
