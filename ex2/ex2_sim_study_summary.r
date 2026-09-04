@@ -11,13 +11,10 @@ if (is.na(.res_file)) .res_file <- "sim_study_ints.RData"
 cat(sprintf("\nLoading %s\n", .res_file))
 load(.res_file)
 
-# The checkpointing driver adds bookkeeping columns (rep, failed, error) that are not per-arm
-# statistics. They must come off before anything below: `error` is character, so the
-# abs(sim_study_ints) calls used to build the error and overfit frames fail outright on it, and the
-# rest would otherwise be swept into the pivots that split names on "<model>_<statistic>".
-# `level` and `num_comp` are NOT dropped -- they are the study's design factors and are grouped on.
-# (`level` replaced the old `sim` axis; see DGP_LEVELS in ex2_config.r for why.)
-# Report failed tasks first, so a study that lost tasks is not summarized as though it were whole.
+# Drop the driver's bookkeeping columns (rep, failed, error): they are not per-arm statistics and
+# would otherwise be swept into the pivots that split names on "<model>_<statistic>". `level` and
+# `num_comp` stay, being the study's design factors. Failed tasks are reported before being
+# excluded, so a study that lost tasks is not summarized as though it were whole.
 if ("failed" %in% names(sim_study_ints)) {
   n_failed <- sum(sim_study_ints$failed, na.rm = TRUE)
   cat(sprintf("\nTasks loaded: %d", nrow(sim_study_ints)))
@@ -31,10 +28,8 @@ if ("failed" %in% names(sim_study_ints)) {
 }
 sim_study_ints <- sim_study_ints |> select(-any_of(c("rep", "failed", "error")))
 
-# 99% posterior-predictive interval coverage, averaged per condition. Both models
-# cover in excess of 99%, confirming the check cannot rule out the intercepts
-# model (paper Section 5). This is a purely numeric result -- the standardized
-# error and correlation summaries are instead conveyed by the plots below.
+# Posterior-predictive interval coverage, averaged per condition. The standardized error and
+# correlation summaries are conveyed by the plots below.
 perc_summary <- sim_study_ints |>
   group_by(num_comp, level) |>
   summarize(
@@ -138,12 +133,9 @@ sim_study_overfit <- abs(sim_study_ints) |>
   mutate(
     errspur = (cor_sq_3 + cor_sq_4 + cor_sq_5) / 3
   ) |>
-  # Drop the per-unit correlation stats (cor_sq_*, acor_err_*): both end in a digit
-  # but index untreated units, not time, so they must not enter the time pivot below.
+  # Drop the per-unit correlation stats: they end in a digit but index units, not time.
   select(!starts_with("cor_sq") & !starts_with("acor_err")) |>
-  # Second pivot only over the time-indexed columns (name ends in _<digit>);
-  # the scalar per-model stats (pred_perc, pred_mad, loc_cor_pval) are left
-  # untouched, so new scalar stats can be added without breaking this pivot.
+  # Second pivot only over the time-indexed columns; scalar per-model stats are left untouched.
   pivot_longer(
     cols = matches("_\\d+$"),
     names_to = c(".value", "time"),

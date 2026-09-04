@@ -5,66 +5,29 @@
 ## file, so the prior depends on the data in exactly one stated place (through each dataset's RMS or
 ## sd) rather than twice.
 ##
-## Method differs from ex1's. ex1's constants are properties of the MODEL's prior, so
-## ex1_derive_scales.r forward-simulates that prior in plain R. ex2's error scale is instead pinned
-## to a property of its DGP -- the noise it actually generates, relative to the dispersion it
-## actually produces -- so this file simulates the DGP. That is cheap and exact: ex2's DGP is plain
-## R already (arima.sim plus loadings), with no Stan involved.
+## Method differs from ex1's: ex1's constants are properties of the model's prior, so that file
+## forward-simulates the prior, while ex2's are pinned to properties of its DGP, so this file
+## simulates the DGP.
 
 source("ex2_config.r")
 
 set.seed(52918)
 N_DATASETS <- 2000L
 
-## --- the DGP, transcribed from ex2_sim_study.r --------------------------------------------------
-## Kept in step with the study by reading every constant from ex2_config.r. The one thing this
-## reproduces rather than imports is the generating code itself; if sim_model_intercepts changes
-## shape, this must follow.
-
-ruv <- function(d) { v <- rnorm(d); v / sqrt(sum(v * v)) }
+## The DGP itself comes from ex2_dgp.r, the same file ex2_sim_study.r reads, so this derivation
+## cannot describe data the study does not generate.
+source("ex2_dgp.r")
 
 gen_one <- function(N_comp_spur, level, sim = DGP_SIM) {
-  N_unc <- DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp_spur
-  K_gen <- 2 + DGP_K_UNC
-  T_times <- DGP_T_TIMES
-
-  f_treat <- level + arima.sim(model = list(ar = 0.9), n = T_times)
-  f_alt <- (f_treat - level) +
-    c(rep(0, T_times - DGP_T_TREATED), rep(-DGP_F_TREAT_SD, DGP_T_TREATED))
-
-  f_unc <- matrix(nrow = DGP_K_UNC, ncol = T_times)
-  cor_unc <- Inf
-  while (cor_unc > 0.01) {
-    for (k in seq_len(DGP_K_UNC)) {
-      f_unc[k, ] <- rnorm(1, 0, 2) + arima.sim(model = list(ar = 0.9), n = T_times)
-    }
-    cor_unc <- max(abs(cor(t(f_unc), t(t(f_treat)))))
-  }
-
-  facs <- rbind(f_treat, f_alt, f_unc)
-  loads <- matrix(nrow = DGP_N_UNITS, ncol = K_gen)
-  loads[1, ] <- c(1, rep(0, K_gen - 1))
-  for (n in seq_len(DGP_N_COMP_TRUE)) {
-    loads[1 + n, ] <- c(sqrt(sim), 0, sqrt(1 - sim) * ruv(K_gen - 2))
-  }
-  for (n in seq_len(N_comp_spur)) {
-    loads[1 + DGP_N_COMP_TRUE + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
-  }
-  for (n in seq_len(N_unc)) {
-    loads[1 + DGP_N_COMP_TRUE + N_comp_spur + n, ] <- c(0, 0, ruv(K_gen - 2))
-  }
-
-  lat <- loads %*% facs
-  noise_sd <- DGP_NOISE_FRAC * mean(apply(lat, 1, sd))
-  Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = noise_sd))
-  list(Y = Y, noise_sd = noise_sd)
+  sim_model_intercepts(
+    N_unc = DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp_spur,
+    N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = N_comp_spur,
+    K_unc = DGP_K_UNC, sim = sim, level_offset = level)
 }
 
 ## --- what the DGP produces ----------------------------------------------------------------------
-## Averaged over the study's own sweep grid, so the constants are not tuned to one cell of it.
 
-## The study's own sweep grid, so the constants are not tuned to one cell of it. `sim` is no
-## longer swept (fixed at DGP_SIM); the level gap replaced it -- see ex2_config.r.
+## The study's own sweep grid, so the constants are not tuned to one cell of it.
 grid <- expand.grid(N_comp = c(2, 3), level = DGP_LEVELS)
 rows <- vector("list", nrow(grid))
 for (g in seq_len(nrow(grid))) {
@@ -93,10 +56,9 @@ cat(sprintf("\n  overall:  E[RMS] = %.2f   E[sd] = %.2f   E[noise] = %.3f   RMS/
             rms_bar, sd_bar, noise_bar, rms_bar / sd_bar))
 
 ## --- ETA_FRAC_EX2 --------------------------------------------------------------------------------
-## eta is an ABSOLUTE error sd shared by both arms, expressed as a fraction of mean sd(y_n). sd
-## rather than RMS for two reasons: the DGP defines its noise off the latent SD, and sd is
-## arm-neutral where RMS carries the intercepts -- which is the whole point of moving off the ratio
-## parametrization, where the arms' justified sigma difference leaked into their error scales.
+## eta is an absolute error sd shared by both arms, expressed as a fraction of mean sd(y_n). sd
+## rather than RMS because the DGP defines its noise off the latent sd, and because sd is
+## arm-neutral where RMS carries the intercepts.
 
 eta_frac <- noise_bar / sd_bar
 
@@ -140,7 +102,7 @@ cat(sprintf("\n  Note: the DGP's own noise sd spans %.3f to %.3f across datasets
 cat("  per-unit latent sds do. That is NOT inherited as extra variance downstream: the true noise sd\n")
 cat("  and mean sd(y_n) correlate at +0.93, so their ratio -- ETA_FRAC_EX2 -- has CV 0.09 against\n")
 cat("  0.25 for the noise sd itself, and the prior lands within 88-116% of the truth in 90% of\n")
-cat("  datasets against a prior whose own sd equals its location. See EX2_PLAN.md section 5.\n")
+cat("  datasets against a prior whose own sd equals its location.\n")
 
 ## --- guard ----------------------------------------------------------------------------------------
 ## Committed values read from ex2_config.r, so this checks the constant the study actually uses
