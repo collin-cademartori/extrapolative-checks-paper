@@ -15,9 +15,10 @@ DGP_N_UNITS <- 8           # 1 treated + N_COMP_TRUE + N_comp_spur + N_unc, held
 DGP_N_COMP_TRUE <- 2
 DGP_K_UNC <- 1
 
-## Post-treatment divergence of the spurious factor f_alt, in absolute units rather than as a
-## fraction of each dataset's realised sd.
-DGP_F_TREAT_SD <- 1.9
+## Post-treatment divergence of the spurious factor f_alt, as a multiple of the realised sd of the
+## treated factor in that dataset. Anchored rather than absolute so the divergence is the same size
+## relative to the series it perturbs in every dataset, as every other scale here is.
+DGP_F_TREAT_FRAC <- 1.0
 
 ## Swept axis 1: the gap between the treated and true group's long-run average and the spurious
 ## group's. This is the quantity that makes location informative about correlation, which is the

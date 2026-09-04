@@ -24,9 +24,11 @@ sim_model_intercepts <- function(
   f_treat <- level_offset + arima.sim(model = list(ar = 0.9), n = T_times)
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over the treatment
-  # window -- the driver of the "spurious" comparators.
-  f_alt <- (f_treat - level_offset) +
-    c(rep(0, T_times - T_treated), rep(-DGP_F_TREAT_SD, T_treated))
+  # window -- the driver of the "spurious" comparators. The divergence is scaled by that dataset's
+  # own realised factor sd, so it is the same size relative to the series it perturbs throughout.
+  f_treat_centred <- f_treat - level_offset
+  f_alt <- f_treat_centred +
+    c(rep(0, T_times - T_treated), rep(-DGP_F_TREAT_FRAC * sd(f_treat_centred), T_treated))
 
   # Reject until the "uncorrelated" factors are genuinely uncorrelated with the treated factor.
   f_unc <- matrix(nrow = K_unc, ncol = T_times)
