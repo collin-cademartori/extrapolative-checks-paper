@@ -320,7 +320,7 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
   # both fits here have an explicit level mechanism, so that correction does not apply. no_ints must
   # still produce the level from its factor means, hence RMS; ints has gamma for the level, hence sd.
   #
-  # eta does NOT differ between the arms, and that is the point of absolute_error mode here. Under
+  # eta does NOT differ between the arms, which is the point. Under
   # the previous ratio parametrization the error was tau[n] * sigma[n] with a shared tau prior, so
   # the justified sigma difference leaked straight into the error scale, where nothing justifies it:
   #
@@ -352,13 +352,13 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
     list(
       N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
       overall_scales = overall_scales,
-      err_scale = 0, absolute_error = TRUE,
+      err_scale = 0,
       err_scale_mean = eta_loc, err_scale_sd = eta_scale,
       data = fit_ys,
       autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
       nonstationary = FALSE, num_treated = NUM_TREATED, delta_scale = delta_scale_ex2,
       include_factor_means = TRUE,
-      fit_scales = 0, alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
+      alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4
@@ -374,13 +374,13 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
     list(
       N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
       overall_scales = overall_sds,
-      err_scale = 0, absolute_error = TRUE,
+      err_scale = 0,
       err_scale_mean = eta_loc, err_scale_sd = eta_scale,
       data = fit_ys,
       autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
       nonstationary = FALSE, num_treated = NUM_TREATED, delta_scale = delta_scale_ex2,
       include_ints = TRUE, int_scale = int_scale_ex2, int_loc = int_loc_ex2,
-      fit_scales = 0, alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
+      alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
       n_chains = 4

@@ -46,7 +46,7 @@ pp_seed_small <- sample.int(.Machine$integer.max, 1)
 test_data <- sample_model(
   N_units = 200, T_times = 100, K_latent = K_LATENT,
   overall_scales = rep(1, 200),
-  err_scale = ETA_FRAC_EX2, absolute_error = TRUE,
+  err_scale = ETA_FRAC_EX2,
   alpha_diag = ALPHA_DIAG,
   autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
   include_ints = TRUE,
@@ -62,7 +62,7 @@ ggsave(plot_ppd, file = "../figs/ppd_intercepts.pdf", device = "pdf", width = 7,
 test_data_small <- sample_model(
   N_units = DGP_N_UNITS, T_times = DGP_T_TIMES, K_latent = K_LATENT,
   overall_scales = rep(1, DGP_N_UNITS),
-  err_scale = ETA_FRAC_EX2, absolute_error = TRUE,
+  err_scale = ETA_FRAC_EX2,
   alpha_diag = ALPHA_DIAG,
   autocor_a = RHO_EX2[1], autocor_b = RHO_EX2[2],
   include_ints = TRUE,

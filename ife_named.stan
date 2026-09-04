@@ -54,7 +54,6 @@ data {
   real<lower=0> a_rho;
   real<lower=0> b_rho;
 
-  int<lower=0, upper=1> fit_overall_scales;
   vector<lower=0>[M_units] sigma_data;
 
   int<lower=0, upper=1> nonstationary;
@@ -70,20 +69,7 @@ data {
   real<lower=0> m_tau;
   real<lower=0> s_tau;
 
-  // How the observation error scale is parameterized.
-  //   0 (default, unchanged): err_sd[n] = tau[n] * sigma[n]. The error is a RATIO to each unit's
-  //     fixed scale, so it is forced proportional to that unit's amplitude.
-  //   1: err_sd[n] = eta, one ABSOLUTE scale shared by all units, with sigma[n] left to scale only
-  //     the signal. Use when the noise is believed homoscedastic on the data's own scale while the
-  //     units' amplitudes differ -- which is exactly ex1's DGP (sigma_data = 1, tau = 2, so every
-  //     unit has level-noise sd 2, while sample amplitudes differ by ~3.3x).
-  // In mode 1, m_tau / s_tau and a fixed tau_val are all read on the ABSOLUTE data scale, not as
-  // ratios. The caller is responsible for passing values on the right scale; nothing here can
-  // detect a ratio-scaled prior being handed to an absolute-scaled model.
-  int<lower=0, upper=1> absolute_error;
-
-  // Prior scale for the treatment effect, on the DATA's own scale. 0 keeps the historical
-  // behaviour, in which the effect prior inherited the treated unit's sigma[1].
+  // Prior scale for the treatment effect, on the DATA's own scale.
   //
   // Why it is separable: sigma does NOT denote the same quantity across the models being compared.
   // In the nonstationary branch it scales the DIFFERENCED signal; in the stationary branch it is
@@ -109,9 +95,8 @@ transformed data {
   }
 
   matrix[T_times, M_units] Y_outcome;
-  // 0 free error-scale parameters when tau is fixed; 1 in absolute mode (a shared eta); one per
-  // unit in ratio mode.
-  int n_err = (tau_val > 0) ? 0 : (absolute_error == 1 ? 1 : M_units);
+  // 0 free error-scale parameters when eta is fixed, otherwise 1: a single eta shared by all units.
+  int n_err = (tau_val > 0) ? 0 : 1;
 
   cov_matrix[T_times] errors_cov;
   cov_matrix[T_times] errors_precision;
@@ -156,9 +141,7 @@ transformed data {
 
 parameters {
 
-  vector<lower=0>[fit_overall_scales == 1 ? M_units : 0] sigma_raw;
-  // The free error-scale parameter(s): length 0 when tau is fixed, 1 in absolute mode (a shared
-  // eta on the data's own scale), M_units in ratio mode (one tau per unit). See absolute_error.
+  // The shared error scale eta, on the data's own scale. Length 0 when it is fixed by tau_val.
   vector<lower=0>[n_err] tau_param;
   vector<lower=0, upper=1>[factor_means == 1 ? 1 : 0] omega_sq_param;
 
@@ -178,12 +161,7 @@ parameters {
 
 transformed parameters {
 
-  vector[M_units] sigma;
-  if(fit_overall_scales == 1) {
-    sigma = sigma_data .* sigma_raw;
-  } else {
-    sigma = sigma_data;
-  }
+  vector[M_units] sigma = sigma_data;
 
   real<lower=0, upper=1> omega_sq;
   if(factor_means) {
@@ -199,31 +177,17 @@ transformed parameters {
     Phi_means = rep_vector(0, K_latent);
   }
 
-  // err_sd is the primitive -- the observation-error sd for each unit, on the data's own scale.
-  // tau is DERIVED from it as the ratio to that unit's fixed scale, which keeps tau's meaning
-  // ("noise relative to unit scale") identical in both modes. That matters for cor_sq below, whose
-  // denominator needs exactly (err_sd[n] / sigma[n])^2, and it keeps everything downstream that
-  // reads draws("tau") interpreting the same quantity.
-  vector<lower=0>[M_units] err_sd;
-  if(tau_val > 0) {
-    err_sd = absolute_error == 1 ? rep_vector(tau_val, M_units) : tau_val * sigma;
-  } else if(absolute_error == 1) {
-    err_sd = rep_vector(tau_param[1], M_units);
-  } else {
-    err_sd = tau_param .* sigma;
-  }
+  // err_sd is the observation-error sd for each unit, on the data's own scale: one eta shared by
+  // every unit, either fixed by tau_val or estimated. tau is DERIVED from it as the ratio to that
+  // unit's fixed scale, which is what cor_sq below needs and what draws("tau") reports.
+  vector<lower=0>[M_units] err_sd =
+    rep_vector(tau_val > 0 ? tau_val : tau_param[1], M_units);
   vector<lower=0>[M_units] tau = err_sd ./ sigma;
 
-  // The omega_sq factor applies in RATIO mode only. There err_sd = tau * sigma[n] is a FRACTION of
-  // the signal scale, and omega_sq is the share of signal variance carried by the AR process (the
-  // rest going to the factor means), so scaling by it holds the noise-to-signal ratio fixed as
-  // omega_sq moves. In ABSOLUTE mode err_sd is an error sd on the DATA's own scale and must not be
-  // rescaled by a parameter: doing so made a shared eta mean different things in two arms that
-  // differ only in whether factor_means is on. Measured on ex2, where only the no_ints arm uses
-  // factor means, that arm's effective error was sqrt(omega_sq) x eta -- 0.67 x on average under
-  // omega_sq's Uniform(0, 1) prior -- and its posterior eta ran 1.6x the other arm's to compensate.
-  real err_var_mult = (absolute_error == 1) ? 1.0 : omega_sq;
-  vector<lower=0>[M_units] error_precisions = inv(err_var_mult * square(err_sd));
+  // err_sd is an error sd on the data's own scale and is NOT rescaled by omega_sq: doing so would
+  // make a shared eta mean different things in two arms that differ only in whether factor_means
+  // is on.
+  vector<lower=0>[M_units] error_precisions = inv(square(err_sd));
   if(nonstationary) {
     // Differenced errors have variance 2v (see errors_cov); halve the precision.
     error_precisions = 0.5 * error_precisions;
@@ -279,10 +243,6 @@ transformed parameters {
 
 model {
 
-  if(fit_overall_scales == 1) {
-    sigma_raw ~ normal(0, 5);
-  }
-
   if(tau_val == 0) {
     tau_param ~ normal(m_tau, s_tau);
   }
@@ -313,11 +273,10 @@ model {
   Phi_means_param ~ std_normal();
 
   if(num_treated > 0) {
-    // delta_scale is read as an ABSOLUTE scale when supplied, so it is not further modified by
-    // omega_sq: a caller passing a common value across arms means those arms to have the same
-    // effect prior, and omega_sq differs between them (it is 1 unless factor_means is on).
-    real d_scale = delta_scale > 0 ? delta_scale : sqrt(omega_sq) * sigma[1];
-    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), inv(square(d_scale)) * effects_prec);
+    // delta_scale is an ABSOLUTE scale, so it is not further modified by omega_sq: a caller
+    // passing a common value across arms means those arms to have the same effect prior, and
+    // omega_sq differs between them.
+    delta_raw ~ multi_normal_prec(rep_vector(0, num_treated), inv(square(delta_scale)) * effects_prec);
   }
 
   if(sample_posterior) {
@@ -334,11 +293,11 @@ generated quantities {
 
   if(nonstationary) {
     for(n in 1:M_units) {
-      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * err_var_mult * square(err_sd[n]) * errors_cov));
+      Y_prior[:,n] = cumulative_sum(multi_normal_rng(Y_means[:,n], 2 * square(err_sd[n]) * errors_cov));
     }
   } else {
     for(n in 1:M_units) {
-      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], err_var_mult * square(err_sd[n]) * errors_cov);
+      Y_prior[:,n] =  multi_normal_rng(Y_means[:,n], square(err_sd[n]) * errors_cov);
     }
   }
 

@@ -23,7 +23,7 @@ eta_anchor <- mean(rms_y)
 stat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
   overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,
@@ -43,7 +43,7 @@ ggsave(stat_plot_ppc, file = "../figs/ppc_stat_ns.pdf", device = "pdf", width = 
 nonstat_prior_data <- sample_model(
   N_units = N_units, T_times = T_times,
   overall_scales = overall_scales_nonstat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_NONSTAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_NONSTAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
   nonstationary = TRUE, num_treated = 0,
@@ -63,7 +63,7 @@ ggsave(nonstat_plot_ppc, file = "../figs/ppc_nonstat.pdf", device = "pdf", width
 stat_prior_data_long <- sample_model(
   N_units = N_units, T_times = T_LONG,
   overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,
@@ -81,7 +81,7 @@ ggsave(stat_plot_ppc_long, file = "../figs/ppc_stat_long.pdf", device = "pdf", w
 nonstat_prior_data_long <- sample_model(
   N_units = N_units, T_times = T_LONG,
   overall_scales = overall_scales_nonstat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_NONSTAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_NONSTAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
   nonstationary = TRUE, num_treated = 0,

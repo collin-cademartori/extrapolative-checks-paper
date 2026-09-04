@@ -173,13 +173,12 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       # eta is estimated here, as it is for the stationary arm, so the contrast between them is
       # stationarity alone rather than fixed-versus-estimated.
       overall_scales = overall_scales_nonstat,
-      err_scale = 0, absolute_error = TRUE,
+      err_scale = 0,
       err_scale_mean = ETA_FRAC_NONSTAT * eta_anchor,
       err_scale_sd   = ETA_CV_EX1 * ETA_FRAC_NONSTAT * eta_anchor,
       data = fit_ys,
       autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
       nonstationary = TRUE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
-      fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
@@ -192,13 +191,12 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
     list(
       alpha_diag = ALPHA_DIAG,
       N_units = N_units, T_times = T_times,
-      overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
+      overall_scales = overall_scales_stat, err_scale = 0,
       err_scale_mean = ETA_FRAC_STAT * eta_anchor,
       err_scale_sd = ETA_CV_EX1 * ETA_FRAC_STAT * eta_anchor,
       data = fit_ys,
       autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
       nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
-      fit_scales = FALSE,
       type = "posterior", K_latent = K_latent, ad = 0.8,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
@@ -325,7 +323,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed) {
     # sigma = 1 and err_sd = 2 are the truth the arms are measured against. The nonstationary arm
     # is handed both, along with the true rho prior and the same alpha_diag, so "correctly
     # specified" here means more than the true functional form.
-    overall_scales = rep(DGP_SIGMA, N_UNITS), err_scale = DGP_ETA, absolute_error = TRUE,
+    overall_scales = rep(DGP_SIGMA, N_UNITS), err_scale = DGP_ETA,
     alpha_diag = ALPHA_DIAG,
     autocor_a = DGP_RHO[1], autocor_b = DGP_RHO[2],
     nonstationary = TRUE, num_treated = 0,

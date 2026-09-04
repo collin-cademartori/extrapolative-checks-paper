@@ -41,7 +41,7 @@ ETA_FRAC_VAGUE <- 0.5
 
 nonstat_prior_data <- sample_model(
   overall_scales = overall_scales_nonstat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_NONSTAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_NONSTAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
   nonstationary = TRUE, num_treated = 0,
@@ -53,7 +53,7 @@ nonstat_absr <- apply(nonstat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ 
 
 stat_prior_data <- sample_model(
   overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_STAT * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_STAT * eta_anchor,
   data = NULL,
   autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,
@@ -66,7 +66,7 @@ stat_absr <- apply(stat_prior_data$ys[, , 1], 1, \(x) sqrt(summary(lm(x ~ seq_le
 
 vague_prior_data <- sample_model(
   overall_scales = overall_scales_stat, alpha_diag = ALPHA_DIAG,
-  err_scale = ETA_FRAC_VAGUE * eta_anchor, absolute_error = TRUE,
+  err_scale = ETA_FRAC_VAGUE * eta_anchor,
   data = NULL,
   autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
   nonstationary = FALSE, num_treated = 0,

@@ -8,9 +8,9 @@ ife_mod <- cmdstan_model(stan_file = "../ife_named.stan")
 
 sample_model <- function(
     N_units = 8, T_times = 20, K_latent = 4,
-    data = NULL, overall_scales = NULL, fit_scales = NULL, err_scale = 0.05,
+    data = NULL, overall_scales = NULL, err_scale = 0.05,
     err_scale_mean = 0, err_scale_sd = 0,
-    autocor_a, autocor_b, alpha_diag = 0, nonstationary, absolute_error = FALSE, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
+    autocor_a, autocor_b, alpha_diag = 0, nonstationary, int_scale = 1, int_loc = 0, include_ints = FALSE, include_factor_means = FALSE,
     num_treated, delta_scale = 0, type = "prior_pred",
     iter = 1000, iter_warm = NULL, quiet = TRUE, 
     ad = 0.98, max_treedepth = 10, n_chains = 4, parallel_chains = 1,
@@ -33,6 +33,7 @@ sample_model <- function(
   stopifnot(K_latent < N_units)
   stopifnot(num_treated >= 0 && num_treated < T_times)
   stopifnot(err_scale > 0 || (err_scale_mean > 0 && err_scale_sd > 0))
+  stopifnot(num_treated == 0 || delta_scale > 0)
 
   # Where CmdStan writes its per-chain CSVs. Left to cmdstanr these go to R's session tempdir, which
   # on the study machine is /tmp -- a TMPFS, so those CSVs are held in RAM against a cap that is
@@ -92,9 +93,6 @@ sample_model <- function(
     s_tau = err_scale_sd,
     sigma_data =
       if (is.null(overall_scales)) rep(0, N_units) else overall_scales,
-    # fit_scales overrides the default (estimate sigma in posterior, fix in prior_pred):
-    # fit_scales = 0 fixes sigma to the passed overall_scales. The loadings then carry any residual per-unit scale.
-    fit_overall_scales = if (!is.null(fit_scales)) fit_scales else if (type == "prior_pred") 0 else 1,
     nonstationary = nonstationary,
     unit_intercepts = include_ints,
     factor_means = include_factor_means,
@@ -103,25 +101,16 @@ sample_model <- function(
     gamma_scale = int_scale,
     gamma_loc = int_loc,
     alpha_diag = alpha_diag,
-    # 0 = err_sd[n] is tau[n]*sigma[n] (a ratio to each unit's fixed scale); 1 = err_sd[n] is a
-    # single absolute eta shared by all units. In absolute mode err_scale / err_scale_mean /
-    # err_scale_sd are read on the DATA's scale, not as ratios -- the caller must pass values on the
-    # right scale, and nothing can detect the mistake if they do not.
-    absolute_error = as.integer(absolute_error),
-    # Prior scale for the treatment effect, on the data's own scale. 0 = inherit sigma[1], the
-    # historical behaviour. Pass a common positive value across arms being compared so they share a
-    # prior on the estimand; see the note in ife_named.stan's data block.
+    # Prior scale for the treatment effect, on the data's own scale. Pass a common value across
+    # arms being compared so they share a prior on the estimand.
     delta_scale = delta_scale
   )
 
-  # Fallback init for ABSOLUTE mode. eta lives on the data's own scale (order 2 here), but Stan's
-  # default init draws a positive parameter from exp(U(-2, 2)) = (0.14, 7.4); the low end makes the
-  # likelihood extremely sharp at a random Lambda/Phi and every proposal is rejected. In RATIO mode
-  # the same draw is multiplied by sigma[n] (order 8), which rescues it. Pathfinder finds a sensible
-  # eta on its own (~1.2 against a truth of 2 in testing), so this only matters when Pathfinder is
-  # off or has failed. Only absolute mode is touched; the ratio configuration is unchanged.
-  scale_init <- if (isTRUE(absolute_error) && err_scale == 0)
-    list(tau_param = array(err_scale_mean, dim = 1)) else NULL
+  # Fallback init for eta, which lives on the data's own scale. Stan's default init draws a
+  # positive parameter from exp(U(-2, 2)) = (0.14, 7.4); the low end makes the likelihood extremely
+  # sharp at a random Lambda/Phi and every proposal is rejected. Only used when Pathfinder is off
+  # or has failed.
+  scale_init <- if (err_scale == 0) list(tau_param = array(err_scale_mean, dim = 1)) else NULL
 
   # Optional Pathfinder warm start: seed every chain from a draw in the dominant lp mode, discarding modes which are vanishingly tiny compared to the dominant mode.
   init_arg <- if (isTRUE(pathfinder_init)) {
