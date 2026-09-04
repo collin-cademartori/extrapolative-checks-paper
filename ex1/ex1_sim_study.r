@@ -126,7 +126,7 @@ anchor_order <- function(y, K) {
   c(sel, remaining)
 }
 
-run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_log = NULL) {
+run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
@@ -153,9 +153,6 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
   rms_y <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
   sd_y <- apply(fit_ys, 2, sd)
 
-  # Set NONSTAT_FIX_ETA=1 to fix the nonstationary arm's error scale instead of estimating it.
-  NONSTAT_FIX_ETA <- nzchar(Sys.getenv("NONSTAT_FIX_ETA"))
-
   overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
   overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
   eta_anchor <- mean(rms_y)
@@ -176,10 +173,9 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       # eta is estimated here, as it is for the stationary arm, so the contrast between them is
       # stationarity alone rather than fixed-versus-estimated.
       overall_scales = overall_scales_nonstat,
-      err_scale = if (NONSTAT_FIX_ETA) ETA_FRAC_NONSTAT * eta_anchor else 0,
-      absolute_error = TRUE,
-      err_scale_mean = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
-      err_scale_sd   = if (NONSTAT_FIX_ETA) 0 else ETA_FRAC_NONSTAT * eta_anchor,
+      err_scale = 0, absolute_error = TRUE,
+      err_scale_mean = ETA_FRAC_NONSTAT * eta_anchor,
+      err_scale_sd   = ETA_CV_EX1 * ETA_FRAC_NONSTAT * eta_anchor,
       data = fit_ys,
       autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
       nonstationary = TRUE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
@@ -198,7 +194,7 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       N_units = N_units, T_times = T_times,
       overall_scales = overall_scales_stat, err_scale = 0, absolute_error = TRUE,
       err_scale_mean = ETA_FRAC_STAT * eta_anchor,
-      err_scale_sd = ETA_FRAC_STAT * eta_anchor,
+      err_scale_sd = ETA_CV_EX1 * ETA_FRAC_STAT * eta_anchor,
       data = fit_ys,
       autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
       nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
@@ -237,14 +233,11 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
       eta_draws <- pfit$err_scale * sigma_1
       res$eta_med <- median(eta_draws)
       res$eta_q95 <- unname(quantile(eta_draws, 0.95))
-      # NA only when the arm's eta is FIXED, and so has no prior to sit in a tail of.
-      eta_prior_loc <- if (pfit$name == "nonstat") {
-        if (NONSTAT_FIX_ETA) NA_real_ else ETA_FRAC_NONSTAT * eta_anchor
-      } else ETA_FRAC_STAT * eta_anchor
-      # location and scale are equal for every arm, by construction above
-      res$eta_prior_tail <- if (is.na(eta_prior_loc)) NA_real_ else
-        (1 - pnorm(res$eta_med, eta_prior_loc, eta_prior_loc)) /
-          (1 - pnorm(0, eta_prior_loc, eta_prior_loc))
+      eta_prior_loc <- if (pfit$name == "nonstat") ETA_FRAC_NONSTAT * eta_anchor
+        else ETA_FRAC_STAT * eta_anchor
+      eta_prior_sd <- ETA_CV_EX1 * eta_prior_loc
+      res$eta_prior_tail <- (1 - pnorm(res$eta_med, eta_prior_loc, eta_prior_sd)) /
+        (1 - pnorm(0, eta_prior_loc, eta_prior_sd))
 
       res$time_cor_pval <- pfit$time_cor_pval
 
@@ -317,19 +310,10 @@ run_sim_stat <- function(test_data, i, K_latent, post_check = FALSE, progress_lo
     )
   }
 
-  if (post_check) {
-    check_plot <- plot_data_matrix_post(fit_ys, fits$stat$y_pred)
-    ggsave(
-      check_plot,
-      file = paste0("../figs/sim_stat_figs/check_plot_", i, ".pdf"),
-      device = "pdf", height = 4, width = 8, create.dir = TRUE
-    )
-  }
-
   return(res)
 }
 
-run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FALSE) {
+run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed) {
   # Seed the master-process RNG, and draw the dataset selection and the prior-
   # predictive Stan seed *before* generating test_data, so they are not perturbed
   # by cmdstanr's $sample() (which advances R's RNG).
@@ -349,7 +333,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FAL
     iter = 2 * reps, seed = pp_seed
   )
 
-  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat", "plot_data_matrix_post",
+  exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES", "anchor_order",
     "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER",
     "EX1_ITER", "EX1_WARM", "PLOT_REPS")
@@ -401,7 +385,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed, post_check = FAL
         readRDS(ckpt_file)
       } else {
         unit_res <- tryCatch(
-          as.data.frame(run_sim_stat(test_data, s, K_latent, post_check, progress_log = progress_log)),
+          as.data.frame(run_sim_stat(test_data, s, K_latent, progress_log = progress_log)),
           error = function(e) {
             cat(sprintf("[%s] iteration %d (unit %d) FAILED: %s\n",
               format(Sys.time(), "%H:%M"), iter, s, conditionMessage(e)),
