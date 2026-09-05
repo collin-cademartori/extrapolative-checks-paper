@@ -197,8 +197,10 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
   eta_anchor <- mean(sd_y)
   eta_loc <- ETA_FRAC_EX2 * eta_anchor
   eta_scale <- ETA_CV_EX2 * eta_loc
-  # Shared effect-prior scale, for the same reason eta is shared: see ex2_config.r.
-  delta_scale_ex2 <- DELTA_FRAC_EX2 * eta_anchor
+  # Effect-prior scale: the treated unit's PRE-treatment sd. Computed from the data alone, so both
+  # arms receive the identical value. Pre-treatment only, since including the treatment window would
+  # let a large effect widen its own prior.
+  delta_scale_ex2 <- DELTA_FRAC_EX2 * sd(fit_ys[seq_len(nrow(fit_ys) - NUM_TREATED), 1])
   # Unit-intercept prior, anchored on the data rather than fixed: see ex2_config.r.
   int_loc_ex2 <- mean(fit_ys)
   int_scale_ex2 <- INT_FRAC * sd(colMeans(fit_ys))

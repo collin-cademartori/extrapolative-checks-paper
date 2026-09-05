@@ -70,10 +70,11 @@ ETA_FRAC_STAT <- 0.1
 ## stationary and nonstationary models.
 ETA_CV_EX1 <- 1.0
 
-## Prior scale for the treatment effect, multiplied by the average data SD.
-## Expresses idea that treatment effects are typically smaller than the scale of the data.
-## Shared by stationary and nonstationary models, ensuring identical treatment effect priors
-## so that differences in posterior inference are not confounded with differences in the prior.
+## Prior scale for the treatment effect, multiplied by the treated unit's PRE-treatment SD.
+## Expresses idea that treatment effects are typically smaller than the variation already present
+## in the series they act on. Pre-treatment only, so that a large effect cannot widen its own prior.
+## Both models compute it from the data identically, so differences in posterior inference are not
+## confounded with differences in the prior.
 DELTA_FRAC <- 0.5
 
 ## Realised outcome SD over sigma, for the stationary configuration over T = 20 window.

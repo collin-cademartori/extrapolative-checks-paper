@@ -63,9 +63,9 @@ LEVEL_SPREAD_FRAC <- 2.50
 ETA_FRAC_EX2 <- 0.12
 ETA_CV_EX2 <- 1.0
 
-## Prior scale for the treatment effect, multiplied by the average data SD.
-## Expresses idea that treatment effects are typically smaller than the scale of the data.
-## Shared by both arms, ensuring identical treatment effect priors so that differences in posterior
-## inference are not confounded with differences in the prior. Anchored on mean sd(y_n) rather than
-## RMS.
+## Prior scale for the treatment effect, multiplied by the treated unit's PRE-treatment SD.
+## Expresses idea that treatment effects are typically smaller than the variation already present
+## in the series they act on. Pre-treatment only, so that a large effect cannot widen its own prior.
+## Both arms compute it from the data identically, so differences in posterior inference are not
+## confounded with differences in the prior.
 DELTA_FRAC_EX2 <- 0.5

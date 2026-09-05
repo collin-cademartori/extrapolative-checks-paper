@@ -151,12 +151,14 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
   # enough to be plausible. Under a wrong model, a prior that survives its own predictive check is a
   # prior that overfits.
   rms_y <- apply(fit_ys, 2, function(y) sqrt(mean(y^2)))
-  sd_y <- apply(fit_ys, 2, sd)
 
   overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
   overall_scales_nonstat <- SIGMA_MULT_NONSTAT * rms_y
   eta_anchor <- mean(rms_y)
-  delta_scale_ex1 <- DELTA_FRAC * mean(sd_y)
+  # Effect-prior scale: the treated unit's PRE-treatment sd. Computed from the data alone, so both
+  # arms receive the identical value. Pre-treatment only, since including the treatment window would
+  # let a large effect widen its own prior.
+  delta_scale_ex1 <- DELTA_FRAC * sd(fit_ys[seq_len(T_times - num_treated_ex1), 1])
 
 
   # Draw every Stan seed up front, before any sample_model() call: cmdstanr's $sample() advances R's
