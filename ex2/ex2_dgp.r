@@ -1,6 +1,6 @@
 ## Data-generating process for the intercepts example, shared by ex2_sim_study.r and
-## ex2_derive_scales.r so the study and the derivation of its constants cannot describe
-## different data. Requires ex2_config.r to be sourced first.
+## ex2_derive_scales.r so the study and the derivation of its constants use the same
+## model specification. Constant in capitals are defined in ex2_config.r.
 
 ruv <- function(d) {
   v <- rnorm(d)
@@ -8,12 +8,12 @@ ruv <- function(d) {
   return(uv)
 }
 
-# Untreated units split into three groups differing in their pre-treatment correlation with the
-# treated unit and in their long-run average, so location and correlation are entangled in a way
-# the unit-intercepts model wrongly assumes independent.
+# Untreated units split into three groups differing in their latent correlation with the
+# treated unit and in their long-run mean, structured so that means and latent
+# correlations are related.
 #
-# Returns Y (T x N, the fit orientation), the ground-truth group of each column, and the
-# observation-noise sd used.
+# Returns Y (T x N, the fit orientation), the group of each column, and the
+# iid noise SD used.
 sim_model_intercepts <- function(
     N_unc = 2, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = 2,
     T_times = DGP_T_TIMES, T_treated = DGP_T_TREATED,
@@ -24,8 +24,9 @@ sim_model_intercepts <- function(
   f_treat <- level_offset + arima.sim(model = list(ar = 0.9), n = T_times)
 
   # f_alt matches the treated factor pre-treatment, then diverges downward over the treatment
-  # window -- the driver of the "spurious" comparators. The divergence is scaled by that dataset's
-  # own realised factor sd, so it is the same size relative to the series it perturbs throughout.
+  # window, so units loading heavily on f_alt have spuriously strong correlation with treated
+  # over the pre-treatment window. The post-treatment divergence is scaled by the SD of the
+  # factor for the treated unit.
   f_treat_centred <- f_treat - level_offset
   f_alt <- f_treat_centred +
     c(rep(0, T_times - T_treated), rep(-DGP_F_TREAT_FRAC * sd(f_treat_centred), T_treated))
@@ -51,14 +52,12 @@ sim_model_intercepts <- function(
   for (n in seq_len(N_comp_spur)) {
     loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
   }
-  # Uncorrelated units carry no shared-factor signal.
+  # Uncorrelated units load on uncorrelated factors.
   for (n in seq_len(N_unc)) {
     loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0, ruv(K_gen - 2))
   }
 
-  # Treated and true comparators sit high (via f_treat), spurious low (via f_alt), so correlation
-  # with the treated unit does not determine location -- contrary to what the intercepts model
-  # assumes.
+  # Treated and true comparators sit high (via f_treat), spurious low (via f_alt).
   lat <- loads %*% facs
   noise_sd <- DGP_NOISE_FRAC * mean(apply(lat, 1, sd))
   Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = noise_sd))
