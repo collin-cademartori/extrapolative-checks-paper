@@ -33,11 +33,13 @@ rows <- vector("list", nrow(grid))
 for (g in seq_len(nrow(grid))) {
   r <- replicate(N_DATASETS %/% nrow(grid), {
     d <- gen_one(grid$N_comp[g], grid$level[g])
-    c(rms = mean(apply(d$Y, 2, function(y) sqrt(mean(y^2)))),
-      sd  = mean(apply(d$Y, 2, sd)),
+    # Pre-treatment window only, matching the anchors the study computes.
+    Y <- d$Y[seq_len(DGP_T_TIMES - DGP_T_TREATED), , drop = FALSE]
+    c(rms = mean(apply(Y, 2, function(y) sqrt(mean(y^2)))),
+      sd  = mean(apply(Y, 2, sd)),
       noise = d$noise_sd,
-      grand = mean(d$Y),
-      sd_means = sd(colMeans(d$Y)))
+      grand = mean(Y),
+      sd_means = sd(colMeans(Y)))
   })
   rows[[g]] <- c(N_comp = grid$N_comp[g], level = grid$level[g], rowMeans(r),
                  noise_lo = quantile(r["noise", ], 0.05), noise_hi = quantile(r["noise", ], 0.95))

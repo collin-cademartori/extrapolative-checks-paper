@@ -54,13 +54,13 @@ INT_FRAC <- 1.0
 ## ex2_pred_checks.r, which simulates units with long-run SDs equalt to 1. 
 ## Coupled to DGP_LEVELS, since the numerator scales with the level gap; value checked
 ## in derivation script ex2_derive_scales.r.
-LEVEL_SPREAD_FRAC <- 2.50
+LEVEL_SPREAD_FRAC <- 2.64
 
 ## ---- error scale ------------------------------------------------------------------------------
 ## The iid noise SD in both models is assigned a truncated normal prior based on the mean of 
 ## units' sample SDs. The prior location parameter is ETA_FRAC_EX2 times this SD, and the prior
 ## scale parameter is ETA_CV_EX2 * ETA_FRAC_EX2 times this SD. 
-ETA_FRAC_EX2 <- 0.12
+ETA_FRAC_EX2 <- 0.128
 ETA_CV_EX2 <- 1.0
 
 ## Prior scale for the treatment effect, multiplied by the treated unit's PRE-treatment SD.

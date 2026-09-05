@@ -49,7 +49,7 @@ RHO_STAT <- c(98, 2)          # stationary model gets large autocorrelations to 
 ##                       point of ruling it out.
 ##                       Coupled to ETA_FRAC_STAT, which scales the error term and also
 ##                       affects the outcome SD.
-SIGMA_MULT_NONSTAT <- 1 / 6.2
+SIGMA_MULT_NONSTAT <- 1 / 5.3
 SIGMA_MULT_STAT <- 2
 
 ## Error scales, as fractions of average RMS. Eta is expressed on the outcome scale in both
@@ -83,4 +83,4 @@ DELTA_FRAC <- 0.5
 ## This is a measured property of the model which is verified in the derivation script
 ## ex1_derive_scales.r.
 ## Coupled to T_TIMES, K_LATENT, ALPHA_DIAG, RHO_STAT and ETA_FRAC_STAT.
-SD_PER_SIGMA <- 0.322
+SD_PER_SIGMA <- 0.273

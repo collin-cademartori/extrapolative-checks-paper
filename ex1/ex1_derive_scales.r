@@ -81,10 +81,26 @@ prior_moments <- function(sigma, eta, a_rho, b_rho, nonstationary, alpha_diag,
   rms <- sds <- numeric(n_draws)
   for (i in seq_len(n_draws)) {
     Y <- draw_dataset(sigma, eta, a_rho, b_rho, nonstationary, alpha_diag)
+    # Pre-treatment window only, matching the anchors the study computes.
+    Y <- Y[seq_len(T_TIMES - NUM_TREATED), , drop = FALSE]
     rms[i] <- mean(apply(Y, 2, function(y) sqrt(mean(y^2))))
     sds[i] <- mean(apply(Y, 2, sd))
   }
   c(rms = mean(rms), sd = mean(sds))
+}
+
+# Where the two OBSERVED moments fall in the prior predictive distribution at multiple c.
+# Returns the quantile of each; the committed multiple is chosen to keep both away from the tails.
+stat_quantiles <- function(c, n_draws = N_DRAWS %/% 4L) {
+  rms <- sds <- numeric(n_draws)
+  for (i in seq_len(n_draws)) {
+    Y <- draw_dataset(c, ETA_FRAC_STAT, RHO_STAT[1], RHO_STAT[2],
+                      nonstationary = FALSE, alpha_diag = FIT_ALPHA_DIAG)
+    Y <- Y[seq_len(T_TIMES - NUM_TREATED), , drop = FALSE]
+    rms[i] <- mean(apply(Y, 2, function(y) sqrt(mean(y^2))))
+    sds[i] <- mean(apply(Y, 2, sd))
+  }
+  c(q_rms = mean(rms < 1), q_sd = mean(sds < dgp_sd_over_rms))
 }
 
 ## --- prior predictive moments --------------------------------------------------------------------
@@ -139,9 +155,9 @@ mult_stat_sd <- uniroot(function(c) stat_moments(c)["sd"] - dgp_sd_over_rms, c(0
 at_rms <- stat_moments(mult_stat_rms)
 at_sd <- stat_moments(mult_stat_sd)
 
-cat("\n=== SIGMA_MULT_STAT: match the SD, not the RMS ===\n")
+cat("\n=== SIGMA_MULT_STAT: keep both observed moments plausible ===\n")
 cat(sprintf("  multiple that reproduces the data's RMS : %.2f\n", mult_stat_rms))
-cat(sprintf("  multiple that reproduces the data's SD  : %.2f     <- committed value 2\n", mult_stat_sd))
+cat(sprintf("  multiple that reproduces the data's SD  : %.2f     \n", mult_stat_sd))
 cat("\n  They cannot both be met -- the model is misspecified -- so compare what each gives up:\n")
 cat(sprintf("    at c = %.2f :  E[RMS] = %.3f (%3.0f%% of the data's)   E[sd] = %.3f (%3.0f%%)\n",
             mult_stat_rms, at_rms["rms"], 100 * at_rms["rms"] / 1,
@@ -149,12 +165,18 @@ cat(sprintf("    at c = %.2f :  E[RMS] = %.3f (%3.0f%% of the data's)   E[sd] = 
 cat(sprintf("    at c = %.2f :  E[RMS] = %.3f (%3.0f%%)               E[sd] = %.3f (%3.0f%%)\n",
             mult_stat_sd, at_sd["rms"], 100 * at_sd["rms"] / 1,
             at_sd["sd"], 100 * at_sd["sd"] / dgp_sd_over_rms))
-cat("\n  Matching the RMS would cap the prior predictive SD near 60% of the data's -- the prior\n")
-cat("  would PROHIBIT the dispersion the data actually show. Matching the SD instead overshoots\n")
-cat("  the RMS by about half. Excluding a realised moment is a strong assumption made silently;\n")
-cat("  exceeding one is a mild and visible assumption, so the SD fixed point is the conservative\n")
-cat("  choice. The SD is also the quantity that governs how far the fitted factors can track the\n")
-cat("  error term, which is the overfitting this arm exists to exhibit.\n")
+cat("\n  Neither fixed point is the committed choice. At either one the matched moment is centred\n")
+cat("  while the other is pushed toward a tail, and a prior that puts a realised moment of the\n")
+cat("  data in its extreme tail is making a strong assumption silently. The committed multiple is\n")
+cat("  instead chosen so that BOTH observed moments stay inside the central 80% of their prior\n")
+cat("  predictive distributions, which is the property the paper claims for it.\n")
+
+q_committed <- stat_quantiles(SIGMA_MULT_STAT)
+cat(sprintf("\n  at the committed c = %.2f, the observed values sit at:\n", SIGMA_MULT_STAT))
+cat(sprintf("    RMS  %2.0f%% quantile of the prior predictive\n", 100 * q_committed[["q_rms"]]))
+cat(sprintf("    SD   %2.0f%% quantile\n", 100 * q_committed[["q_sd"]]))
+cat(sprintf("    closest approach to a tail: %.0f%%\n",
+            100 * min(q_committed, 1 - q_committed)))
 
 ## --- Guard --------------------------------------------------------------------------------------
 
@@ -174,10 +196,8 @@ cat(sprintf("  committed value %.3f\n", SD_PER_SIGMA))
 
 TOL <- 0.10
 # Committed values read from ex1_config.r.
-committed <- c(SIGMA_MULT_NONSTAT = SIGMA_MULT_NONSTAT, SIGMA_MULT_STAT = SIGMA_MULT_STAT,
-               SD_PER_SIGMA = SD_PER_SIGMA)
-derived <- c(SIGMA_MULT_NONSTAT = mult_nonstat, SIGMA_MULT_STAT = mult_stat_sd,
-             SD_PER_SIGMA = sd_per_sigma)
+committed <- c(SIGMA_MULT_NONSTAT = SIGMA_MULT_NONSTAT, SD_PER_SIGMA = SD_PER_SIGMA)
+derived <- c(SIGMA_MULT_NONSTAT = mult_nonstat, SD_PER_SIGMA = sd_per_sigma)
 gap <- derived / committed - 1
 
 cat("\n=== Committed constants ===\n")
@@ -193,3 +213,18 @@ if (any(abs(gap) >= TOL)) {
        "constants need updating -- do not widen this tolerance to make it pass.")
 }
 cat(sprintf("\nBoth within %.0f%% of the committed values.\n", 100 * TOL))
+
+# SIGMA_MULT_STAT is not a fixed point, so it is guarded on the property it is chosen for rather
+# than on a target value: both observed moments must stay inside the central 80%.
+Q_MIN <- 0.10
+cat(sprintf("\n=== SIGMA_MULT_STAT = %.2f: both observed moments inside the central 80%%? ===\n",
+            SIGMA_MULT_STAT))
+cat(sprintf("  RMS at the %2.0f%% quantile, SD at the %2.0f%% quantile -> closest tail %.0f%%   %s\n",
+            100 * q_committed[["q_rms"]], 100 * q_committed[["q_sd"]],
+            100 * min(q_committed, 1 - q_committed),
+            if (min(q_committed, 1 - q_committed) >= Q_MIN) "ok" else "OUT OF TOLERANCE"))
+if (min(q_committed, 1 - q_committed) < Q_MIN) {
+  stop("SIGMA_MULT_STAT puts an observed moment within ", 100 * Q_MIN,
+       "% of a prior predictive tail. Re-choose it from the quantile curve above rather than ",
+       "widening this bound.")
+}

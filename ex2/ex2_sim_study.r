@@ -193,19 +193,22 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
   # observation-error sd on the data's own scale, so the justified sigma difference cannot leak into
   # the error scale, where nothing would justify it. Values come from ex2_config.r and their
   # derivation from ex2_derive_scales.r.
-  sd_y <- apply(fit_ys, 2, sd)
+  # All scale anchors use the PRE-treatment window only, so that a real treatment effect
+  # cannot inflate the scales of the priors that estimate it.
+  pre_y <- fit_ys[seq_len(nrow(fit_ys) - NUM_TREATED), , drop = FALSE]
+  sd_y <- apply(pre_y, 2, sd)
   eta_anchor <- mean(sd_y)
   eta_loc <- ETA_FRAC_EX2 * eta_anchor
   eta_scale <- ETA_CV_EX2 * eta_loc
   # Effect-prior scale: the treated unit's PRE-treatment sd. Computed from the data alone, so both
   # arms receive the identical value. Pre-treatment only, since including the treatment window would
   # let a large effect widen its own prior.
-  delta_scale_ex2 <- DELTA_FRAC_EX2 * sd(fit_ys[seq_len(nrow(fit_ys) - NUM_TREATED), 1])
+  delta_scale_ex2 <- DELTA_FRAC_EX2 * sd(pre_y[, 1])
   # Unit-intercept prior, anchored on the data rather than fixed: see ex2_config.r.
-  int_loc_ex2 <- mean(fit_ys)
-  int_scale_ex2 <- INT_FRAC * sd(colMeans(fit_ys))
+  int_loc_ex2 <- mean(pre_y)
+  int_scale_ex2 <- INT_FRAC * sd(colMeans(pre_y))
 
-  overall_scales <- apply(fit_ys, 2, \(x) sqrt(mean(x ^ 2)))
+  overall_scales <- apply(pre_y, 2, \(x) sqrt(mean(x ^ 2)))
   fits$no_ints <- fit_with_escalation(
     list(
       N_units = ncol(fit_ys), T_times = nrow(fit_ys), K_latent = K_latent,
