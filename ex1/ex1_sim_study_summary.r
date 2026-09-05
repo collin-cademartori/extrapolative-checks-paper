@@ -29,6 +29,32 @@ if ("failed" %in% names(sim_study_stat)) {
     cat("  (no failures)\n")
   }
 }
+# Post-run verification of the mixing claim: every retained fit must have finished below the
+# threshold on BOTH rhat criteria. The ladder escalates fits that miss them, but it breaks after
+# its last rung regardless, so a fit can exhaust the ladder and still be retained -- this is what
+# catches that. rhat_loadings is reported for context and is deliberately NOT checked: the
+# likelihood sees (Lambda, Phi) only through their product, so rotation-internal non-mixing there
+# is benign.
+.rhat_check <- function(d, arms, thresh = 1.01) {
+  cat("\nConvergence, every retained fit:\n")
+  bad <- 0L
+  for (a in arms) for (v in c("rhat_M", "rhat_estimands", "rhat_loadings")) {
+    x <- d[[paste0(a, "_", v)]]
+    if (is.null(x)) next
+    over <- sum(x > thresh, na.rm = TRUE)
+    if (v != "rhat_loadings") bad <- bad + over
+    cat(sprintf("  %-9s %-16s max %.4f   above %.2f: %d of %d%s\n", a, v, max(x, na.rm = TRUE),
+                thresh, over, length(x), if (v == "rhat_loadings") "   (not checked)" else ""))
+  }
+  if (bad > 0) {
+    warning(sprintf("%d fit(s) finished above rhat %.2f on a checked criterion; the escalation ladder did not converge them", bad, thresh))
+  } else {
+    cat(sprintf("  all fits below %.2f on rhat_M and rhat_estimands\n", thresh))
+  }
+}
+
+.rhat_check(sim_study_stat, c("nonstat", "stat"))
+
 sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error")))
 
 # The numeric results, the curves and the overfit trade-off being plotted below: 95%

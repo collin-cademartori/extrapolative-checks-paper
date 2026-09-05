@@ -151,7 +151,7 @@ sample_model <- function(
     # what identifies it as a configuration ambiguity rather than a failure to converge.
     #   rhat_max       : all parameters (kept, so nothing is hidden)
     #   rhat_loadings  : Lambda / Phi_innovations -- expected looser when factors are weakly separated
-    #   rhat_estimands : delta, tau, rho, sigma -- rotation-invariant; THESE must be clean
+    #   rhat_estimands : delta, eta, rho, gamma, omega_sq -- everything OUTSIDE the product; must be clean
     #   rhat_cor_sq    : the squared loading correlation actually reported from the loadings. Being a
     #                    squared dot product it is invariant to the sign/label ambiguity above, so it
     #                    is the right convergence check for the loadings' scientific content.
@@ -180,8 +180,12 @@ sample_model <- function(
         list(
           rhat_max = suppressWarnings(max(ps$rhat, na.rm = TRUE)),
           rhat_loadings = grp(c("Lambda", "Phi_innovations")),
-          rhat_estimands = grp(c("delta_raw", "tau_param", "rho", "sigma_raw",
-            "gamma_raw", "omega_sq_param", "Phi_means_param")),
+          # Phi_means_param is deliberately absent: ife_named.stan folds it into Phi itself
+          # (Phi[:,k] = Phi_means[k] + centred Phi[:,k]) before the product is formed, so it
+          # reaches the likelihood only through Lambda_Phi and is guarded by rhat_M. gamma and
+          # omega_sq do NOT have that status -- gamma enters additively outside the product.
+          rhat_estimands = grp(c("delta_raw", "tau_param", "rho",
+            "gamma_raw", "omega_sq_param")),
           rhat_cor_sq = grp("cor_sq"),
           rhat_M = grp("Lambda_Phi"),
           ess_delta1 = ps$ess_bulk[match("delta_raw[1]", ps$variable)]
@@ -371,10 +375,10 @@ sample_model <- function(
 # alternative, setting rhat_M = Inf / ess = 0 / div_rate = 1 so no criterion can ever fire, works
 # but hides the intent behind three unreachable numbers.
 escalation_ladder <- function(iter, warm, ad_floor = 0.95, rhat_M = 1.01,
-                              ess = 400, div_rate = 0.001) {
+                              rhat_est = 1.01, ess = 400, div_rate = 0.001) {
   stopifnot(length(iter) == length(warm))
   list(iter = as.integer(iter), warm = as.integer(warm), ad_floor = ad_floor,
-       rhat_M = rhat_M, ess = ess, div_rate = div_rate,
+       rhat_M = rhat_M, rhat_est = rhat_est, ess = ess, div_rate = div_rate,
        max_rounds = length(iter) + 1L)   # rounds INCLUDING the unescalated first attempt
 }
 
@@ -398,7 +402,11 @@ fit_with_escalation <- function(args, seeds, label, progress_log, ladder) {
     fit <- do.call(sample_model, a)
     sd_ <- fit$sampler_diag
     n_draws <- iter * a$n_chains
+    # Both rhat criteria bind. rhat_M licenses ignoring Lambda and Phi, whose rotation-internal
+    # non-mixing is benign; it says nothing about whether the reported quantities themselves mixed,
+    # so rhat_estimands (delta, the error scale, rho, the intercepts, omega_sq) is checked directly.
     slow <- (is.finite(sd_$rhat_M) && sd_$rhat_M > ladder$rhat_M) ||
+      (is.finite(sd_$rhat_estimands) && sd_$rhat_estimands > ladder$rhat_est) ||
       (is.finite(sd_$ess_delta1) && sd_$ess_delta1 < ladder$ess)
     divergent <- is.finite(sd_$n_div) && sd_$n_div > ladder$div_rate * n_draws
     if ((!slow && !divergent) || round == ladder$max_rounds) break
