@@ -60,23 +60,31 @@ loc_cor_summary <- sim_study_ints |>
 cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-int):\n")
 print(loc_cor_summary, width = Inf)
 
-# Per-condition mean and +/-2 SE bands over post-treatment time for a per-time
-# statistic, for the no-intercepts and with-intercepts models. stat is "absz"
-# (standardized error) or "mean" (the posterior mean, whose absolute value is the
-# error since the true effect is 0).
+# The study sweeps a grid, but the figures below show a single condition. The numeric summaries
+# above still cover every cell.
+PLOT_LEVEL <- 5
+PLOT_NUM_COMP <- 3
+
+# Signed relative bias, mean_k / sd_k. The recorded absz_k is already an absolute value, so it
+# cannot be used here: the true effect is 0, so the signed quantity is what carries the bias.
+for (.a in c("no_ints", "ints")) for (.k in 1:5) {
+  sim_study_ints[[paste0(.a, "_relbias_", .k)]] <-
+    sim_study_ints[[paste0(.a, "_mean_", .k)]] / sim_study_ints[[paste0(.a, "_sd_", .k)]]
+}
+
+# Mean and +/-2 SE bands over post-treatment time for a per-time statistic, for the no-intercepts
+# and with-intercepts models. stat is "mean" (absolute bias) or "relbias" (relative bias). Values
+# are SIGNED: the true effect is 0, so the mean of the posterior mean is the bias.
 summarize_error <- function(stat) {
-  abs(sim_study_ints) |>
+  sim_study_ints |>
+    filter(level == PLOT_LEVEL, num_comp == PLOT_NUM_COMP) |>
     pivot_longer(
       cols = contains(paste0(stat, "_")),
       names_to = c(".value", "time"),
       names_transform = list(time = as.integer),
       names_pattern = "(.*)_(\\d+)$"
     ) |>
-    mutate(
-      lev_f = as.factor(paste0("l == ", level)),
-      num_f = as.factor(paste0("b == ", num_comp))
-    ) |>
-    group_by(time, lev_f, num_f) |>
+    group_by(time) |>
     summarize(
       ni_mean = mean(.data[[paste0("no_ints_", stat)]]),
       ni_se   = sd(.data[[paste0("no_ints_", stat)]]) / sqrt(n()),
@@ -100,7 +108,7 @@ plot_error_bands <- function(df, y_label) {
     geom_ribbon(aes(x = time, ymin = it_lower, ymax = it_upper), alpha = 0.2, fill = "#858585") +
     geom_line(aes(x = time, y = ni_mean)) +
     geom_line(aes(x = time, y = it_mean), linetype = "dashed") +
-    facet_grid(vars(num_f), vars(lev_f), scales = "free_y") +
+    geom_hline(yintercept = 0, linewidth = 0.3, colour = "#999999") +
     xlab("Post-Treatment Time") +
     ylab(y_label) +
     theme_bw() +
@@ -108,30 +116,33 @@ plot_error_bands <- function(df, y_label) {
     theme(strip.background = element_rect(fill = "white", color = "black"))
 }
 
-sim_study_std_err <- summarize_error("absz")
+sim_study_std_err <- summarize_error("relbias")
 std_err_plot <- plot_error_bands(
-  sim_study_std_err, "Average Standardized Error of Posterior\n Expected Treatment Effect"
+  sim_study_std_err, "Average Relative Bias of Posterior\n Expected Treatment Effect"
 )
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints_std_err.pdf", create.dir = TRUE)
 
 sim_study_abs_err <- summarize_error("mean")
 abs_err_plot <- plot_error_bands(
-  sim_study_abs_err, "Average Absolute Error of Posterior\n Expected Treatment Effect"
+  sim_study_abs_err, "Average Absolute Bias of Posterior\n Expected Treatment Effect"
 )
 ggsave(abs_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints_abs_err.pdf", create.dir = TRUE)
 
 ## Overfitting plot
 
-sim_study_overfit <- abs(sim_study_ints) |>
+sim_study_overfit <- sim_study_ints |>
+  filter(level == PLOT_LEVEL, num_comp == PLOT_NUM_COMP) |>
   pivot_longer(
     cols = !c(num_comp, level),
     names_to = c("model", ".value"),
     names_transform = list(time = as.integer),
     names_pattern = "^(no_ints|ints)_(.*)$"
   ) |>
-  filter(num_comp == 3) |>
+  # Separation: how far the model tells true comparators from spurious ones. Units 1:2 are the
+  # true comparators and 3:(2 + num_comp) the spurious ones, in the DGP's generating order.
   mutate(
-    errspur = (cor_sq_3 + cor_sq_4 + cor_sq_5) / 3
+    sep = (cor_sq_1 + cor_sq_2) / 2 -
+      rowMeans(pick(num_range("cor_sq_", 3:(2 + PLOT_NUM_COMP))))
   ) |>
   # Drop the per-unit correlation stats: they end in a digit but index units, not time.
   select(!starts_with("cor_sq") & !starts_with("acor_err")) |>
@@ -149,19 +160,19 @@ sim_study_overfit <- abs(sim_study_ints) |>
     ),
     time = paste0("Time ", time)
   ) |>
-  group_by(time, model, level) |>
+  group_by(time, model) |>
   summarize(
-    mean_absz = mean(absz),
-    mean_err = mean(errspur),
+    mean_relbias = mean(relbias),
+    mean_sep = mean(sep),
     .groups = "drop"
   )
 
 overfit_plot <- ggplot(data = sim_study_overfit) +
-  geom_line(aes(x = mean_err, y = mean_absz), linewidth = 0.8) +
-  geom_label(aes(label = model, x = mean_err, y = mean_absz), size = 3) +
-  facet_grid(vars(level), vars(time), scales = "free") +
-  xlab("Modeled Long-Run Correlation (Treated vs Spuriously Correlated Units)") +
-  ylab("Average Standardized Error of Posterior\n Expected Treatment Effect") +
+  geom_line(aes(x = mean_sep, y = mean_relbias), linewidth = 0.8) +
+  geom_label(aes(label = model, x = mean_sep, y = mean_relbias), size = 3) +
+  facet_wrap(vars(time), nrow = 1, scales = "free") +
+  xlab("Modeled Separation of True from Spurious Comparators") +
+  ylab("Average Relative Bias of Posterior\n Expected Treatment Effect") +
   scale_x_continuous(expand = expansion(mult = 0.6), n.breaks = 4) +
   scale_y_continuous(expand = expansion(mult = 0.1)) +
   theme_bw() +
