@@ -86,10 +86,12 @@ loc_cor_summary <- sim_study_ints |>
 cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-int):\n")
 print(loc_cor_summary, width = Inf)
 
-# The study sweeps a grid, but the figures below show a single condition. The numeric summaries
-# above still cover every cell.
-PLOT_LEVEL <- 10
-PLOT_NUM_COMP <- 3
+# The condition the figures show, taken from ex2_config.r so that the study, the derivation of
+# its constants, and this filter cannot state it differently. The numeric summaries above cover
+# whatever cells the results file happens to contain.
+source("ex2_config.r")
+PLOT_LEVEL <- STUDY_LEVEL
+PLOT_NUM_COMP <- STUDY_N_COMP
 
 # Signed relative bias, mean_k / sd_k. The recorded absz_k is already an absolute value, so it
 # cannot be used here: the true effect is 0, so the signed quantity is what carries the bias.

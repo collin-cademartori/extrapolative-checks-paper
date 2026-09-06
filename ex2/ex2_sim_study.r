@@ -459,10 +459,10 @@ cat(sprintf("\n=== mode: %s | reps/cond: %d | iter/warm: %d/%d | escalation: %s 
 if (STUDY_MODE == "fast")
   cat("    FAST MODE -- for specification search only. Elevated rhat_M is expected here and says\n",
       "   nothing about the specification. Do not report these numbers.\n", sep = "")
-# One condition, not the full grid: 3 spurious comparators at the wider level gap. The other
-# cells were used to establish that the effect is not specific to this configuration; the reported
-# figures show this one. DGP_LEVELS still holds both levels for ex2_derive_scales.r, which averages
-# its constants over the grid.
+# One condition, not the full grid: 3 spurious comparators at the wider level gap. The other cells
+# established that the effect is not specific to this configuration; the reported figures show this
+# one. STUDY_LEVEL and STUDY_N_COMP are read here, by ex2_derive_scales.r when it calibrates the
+# constants, and by ex2_sim_study_summary.r when it filters for plotting, so the three cannot drift.
 sim_study_ints <- run_sim_study_intercepts(
   reps = study_reps,
   N_comps = STUDY_N_COMP,
