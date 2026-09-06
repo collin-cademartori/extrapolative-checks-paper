@@ -88,7 +88,7 @@ print(loc_cor_summary, width = Inf)
 
 # The study sweeps a grid, but the figures below show a single condition. The numeric summaries
 # above still cover every cell.
-PLOT_LEVEL <- 5
+PLOT_LEVEL <- 10
 PLOT_NUM_COMP <- 3
 
 # Signed relative bias, mean_k / sd_k. The recorded absz_k is already an absolute value, so it
