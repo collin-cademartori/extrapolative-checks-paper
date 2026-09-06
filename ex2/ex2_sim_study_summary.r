@@ -164,11 +164,17 @@ sim_study_overfit <- sim_study_ints |>
     names_transform = list(time = as.integer),
     names_pattern = "^(no_ints|ints)_(.*)$"
   ) |>
-  # Separation: how far the model tells true comparators from spurious ones. Units 1:2 are the
-  # true comparators and 3:(2 + num_comp) the spurious ones, in the DGP's generating order.
+  # How far the model leans on the spurious comparators rather than the true ones: the mean
+  # modelled ABSOLUTE correlation with the spurious units over the mean with the true ones. Units
+  # 1:2 are the true comparators and 3:(2 + num_comp) the spurious ones, in the DGP's generating
+  # order. cor_sq is a SQUARED correlation, so each term is rooted before averaging.
+  #
+  # A ratio, not a difference, and larger means more overfitting -- matching the direction of ex1's
+  # noise-absorption metric. 1 is the point at which the model correlates with the two groups
+  # equally and so cannot tell them apart.
   mutate(
-    sep = (cor_sq_1 + cor_sq_2) / 2 -
-      rowMeans(pick(num_range("cor_sq_", 3:(2 + PLOT_NUM_COMP))))
+    sep = rowMeans(sqrt(pick(num_range("cor_sq_", 3:(2 + PLOT_NUM_COMP))))) /
+      ((sqrt(cor_sq_1) + sqrt(cor_sq_2)) / 2)
   ) |>
   # Drop the per-unit correlation stats: they end in a digit but index units, not time.
   select(!starts_with("cor_sq") & !starts_with("acor_err")) |>
@@ -197,7 +203,7 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_sep, y = mean_relbias), linewidth = 0.8) +
   geom_label(aes(label = model, x = mean_sep, y = mean_relbias), size = 3) +
   facet_wrap(vars(time), nrow = 1, scales = "free") +
-  xlab("Modeled Separation of True from Spurious Comparators") +
+  xlab("Modeled Correlation with Spurious Comparators,\n Relative to True Comparators") +
   ylab("Average Relative Bias of Posterior\n Expected Treatment Effect") +
   scale_x_continuous(expand = expansion(mult = 0.6), n.breaks = 4) +
   scale_y_continuous(expand = expansion(mult = 0.1)) +
