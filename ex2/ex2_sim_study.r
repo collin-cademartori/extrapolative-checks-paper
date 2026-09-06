@@ -87,7 +87,7 @@ worker_progress <- function(label, logfile = "progress.log") {
 # sample_model.r; only the rungs below are per-example. rhat_M is the criterion that binds in
 # practice here -- the ess and divergence thresholds have never triggered.
 EX2_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)) else
-  escalation_ladder(iter = c(6000L, 9000L), warm = c(2500L, 4000L))
+  escalation_ladder(iter = c(3000L, 6000L), warm = c(1500L, 2000L))
 ESCALATE_MAX <- EX2_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 # Base sampling length, per mode. Both arms share these.
@@ -222,7 +222,7 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
       alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
-      n_chains = 4
+      n_chains = 3
     ),
     seeds = fit_seeds[1, ],
     label = sprintf("level %g num_comp %d rep %d no_ints", level, N_comp, rep_i),
@@ -244,7 +244,7 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
       alpha_diag = ALPHA_DIAG, pathfinder_init = TRUE,
       type = "posterior", quiet = TRUE, ad = 0.8,
       iter = EX2_ITER, iter_warm = EX2_WARM,
-      n_chains = 4
+      n_chains = 3
     ),
     seeds = fit_seeds[2, ],
     label = sprintf("level %g num_comp %d rep %d ints", level, N_comp, rep_i),
