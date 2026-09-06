@@ -27,8 +27,10 @@ gen_one <- function(N_comp_spur, level, sim = DGP_SIM) {
 
 ## --- what the DGP produces ----------------------------------------------------------------------
 
-## The study's own sweep grid, so the constants are not tuned to one cell of it.
-grid <- expand.grid(N_comp = c(2, 3), level = DGP_LEVELS)
+## The single condition the study runs, so the constants describe the data it actually generates.
+## The level gap matters here: the between-unit spread scales with it, while the within-unit sd
+## does not, so a constant averaged over a wider grid would misstate it.
+grid <- expand.grid(N_comp = STUDY_N_COMP, level = STUDY_LEVEL)
 rows <- vector("list", nrow(grid))
 for (g in seq_len(nrow(grid))) {
   r <- replicate(N_DATASETS %/% nrow(grid), {

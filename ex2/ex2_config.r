@@ -22,9 +22,13 @@ DGP_K_UNC <- 1
 DGP_F_TREAT_FRAC <- 1.0
 
 ## Level gap between factor defining spurious and factor defining treated.
-## We test at two levels to check how the gap between the models with factor-level and
-## unit-level means varies as unit level becomes more strongly related to latent correlation.
+## DGP_LEVELS records the range explored while establishing that the effect is not specific to one
+## configuration. STUDY_LEVEL and STUDY_N_COMP are the single condition the study runs, and are
+## what ex2_derive_scales.r calibrates against -- the between-unit spread scales with the level
+## gap while the within-unit sd does not, so a constant averaged over a wider grid misstates it.
 DGP_LEVELS <- c(5, 10)
+STUDY_LEVEL <- 10
+STUDY_N_COMP <- 3
 
 ## Strength of the spurious units' pre-treatment correlation.
 DGP_SIM <- 0.9
@@ -54,7 +58,7 @@ INT_FRAC <- 1.0
 ## ex2_pred_checks.r, which simulates units with long-run SDs equalt to 1. 
 ## Coupled to DGP_LEVELS, since the numerator scales with the level gap; value checked
 ## in derivation script ex2_derive_scales.r.
-LEVEL_SPREAD_FRAC <- 2.64
+LEVEL_SPREAD_FRAC <- 3.35
 
 ## ---- error scale ------------------------------------------------------------------------------
 ## The iid noise SD in both models is assigned a truncated normal prior based on the mean of 

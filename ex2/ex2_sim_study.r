@@ -465,8 +465,8 @@ if (STUDY_MODE == "fast")
 # its constants over the grid.
 sim_study_ints <- run_sim_study_intercepts(
   reps = study_reps,
-  N_comps = 3,
-  levels = 10,
+  N_comps = STUDY_N_COMP,
+  levels = STUDY_LEVEL,
   K_latent = K_LATENT,
   seed = 52918,
   plot_iters = 50
