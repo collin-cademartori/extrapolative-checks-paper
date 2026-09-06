@@ -3,6 +3,9 @@
 
 source("../sample_model.r")
 source("../plotting.r")
+# Sourced before the constants below are read, not after: every N_UNITS, SIGMA_MULT_* and
+# ETA_FRAC_* on this page comes from here.
+source("ex1_config.r")
 
 seed <- 72385614
 
@@ -11,9 +14,6 @@ N_units <- N_UNITS
 T_times <- T_TIMES
 K_latent <- K_LATENT
 T_LONG <- 500
-
-# Scale constants come from ex1_config.r.
-source("ex1_config.r")
 
 rms_y <- rep(1, N_UNITS)
 overall_scales_stat    <- SIGMA_MULT_STAT * rms_y
