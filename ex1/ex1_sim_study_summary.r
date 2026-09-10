@@ -57,7 +57,7 @@ if ("failed" %in% names(sim_study_stat)) {
 
 sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error")))
 
-# The numeric results, the curves and the overfit trade-off being plotted below: 95%
+# The numeric results, the curves and the overfit trade-off being plotted below: 99%
 # posterior-predictive interval coverage, and the time-correlation statistic (S1) 
 ## predictive p-value, each averaged over the study for each model.
 
@@ -71,7 +71,7 @@ perc_summary <- sim_study_stat |>
     mean_perc_stat = mean(stat_pred_perc),
   )
 
-cat("\nPer-model 95% interval coverage:\n")
+cat("\nPer-model 99% interval coverage:\n")
 print(as_tibble(perc_summary), width = Inf)
 
 pval_summary <- sim_study_stat |>
@@ -169,19 +169,19 @@ sim_study_overfit <- abs(sim_study_stat) |>
   mutate(
     model = fct_recode(as.factor(model),
       "Nonstat" = "nonstat",
-      "Stationary" = "stat"
+      "Stat" = "stat"
     ),
     time = paste0("Time ", time)
   )
 
 overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_noise_abs, y = mean_absz, group = time), linewidth = 0.8) +
-  geom_label(aes(label = model, x = mean_noise_abs, y = mean_absz), size = 3) +
+  geom_label(aes(label = model, x = mean_noise_abs, y = mean_absz), size = 2.5) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
-  xlab("Fraction of Treated Unit's Pre-Treatment\n Noise Absorbed by the Fitted Signal") +
-  ylab("Average Standardized Error of Posterior Expected Treatment Effect") +
-  scale_x_continuous(expand = expansion(mult = 0.3)) +
-  scale_y_continuous(expand = expansion(mult = 0.2)) +
+  xlab("Regression Coefficient of Signal\n Estimation Error on Noise\n(Treated Unit)") +
+  ylab("Average Standardized Error of  E[Treatment Effect | Y]") +
+  scale_x_continuous(expand = expansion(mult = 0.2)) +
+  scale_y_continuous(expand = expansion(mult = 0.15)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black")) +

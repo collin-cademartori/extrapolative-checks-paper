@@ -22,7 +22,7 @@ plot_prior_absr <- function(absrs) {
       axis.text.y = element_blank(),
       axis.ticks.y = element_blank()
     ) +
-    xlab("Absolute Correlation\n (Outcome vs Time)") +
+    xlab("Prior Predictive Dist.\n of Absolute Correlation\n (Outcome vs Time)") +
     ylab("") +
     ggtitle("(A)")
 

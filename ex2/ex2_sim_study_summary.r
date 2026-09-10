@@ -130,15 +130,16 @@ summarize_error <- function(stat) {
 
 # Per-condition time series of the two models' means with shaded +/-2 SE bands
 # (no-intercepts solid, with-intercepts dashed).
-plot_error_bands <- function(df, y_label) {
+plot_error_bands <- function(df, y_label, label) {
   ggplot(data = df) +
+    geom_hline(yintercept = 0, linewidth = 0.3, colour = "#999999") +
     geom_ribbon(aes(x = time, ymin = ni_lower, ymax = ni_upper), alpha = 0.2, fill = "#858585") +
     geom_ribbon(aes(x = time, ymin = it_lower, ymax = it_upper), alpha = 0.2, fill = "#858585") +
     geom_line(aes(x = time, y = ni_mean)) +
     geom_line(aes(x = time, y = it_mean), linetype = "dashed") +
-    geom_hline(yintercept = 0, linewidth = 0.3, colour = "#999999") +
     xlab("Post-Treatment Time") +
     ylab(y_label) +
+    ggtitle(label) +
     theme_bw() +
     theme(panel.grid = element_blank()) +
     theme(strip.background = element_rect(fill = "white", color = "black"))
@@ -146,13 +147,13 @@ plot_error_bands <- function(df, y_label) {
 
 sim_study_std_err <- summarize_error("relbias")
 std_err_plot <- plot_error_bands(
-  sim_study_std_err, "Average Relative Bias of Posterior\n Expected Treatment Effect"
+  sim_study_std_err, "Average Relative Bias of Posterior\n Expected Treatment Effect", "(B)"
 )
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints_std_err.pdf", create.dir = TRUE)
 
 sim_study_abs_err <- summarize_error("mean")
 abs_err_plot <- plot_error_bands(
-  sim_study_abs_err, "Average Absolute Bias of Posterior\n Expected Treatment Effect"
+  sim_study_abs_err, "Average Absolute Bias of Posterior\n Expected Treatment Effect", "(A)"
 )
 ggsave(abs_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/ints_abs_err.pdf", create.dir = TRUE)
 
@@ -203,14 +204,14 @@ sim_study_overfit <- sim_study_ints |>
 
 overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_sep, y = mean_relbias), linewidth = 0.8) +
-  geom_label(aes(label = model, x = mean_sep, y = mean_relbias), size = 3) +
-  facet_wrap(vars(time), nrow = 1, scales = "free") +
-  xlab("Modeled Correlation with Spurious Comparators,\n Relative to True Comparators") +
-  ylab("Average Relative Bias of Posterior\n Expected Treatment Effect") +
-  scale_x_continuous(expand = expansion(mult = 0.6), n.breaks = 4) +
+  geom_label(aes(label = model, x = mean_sep, y = mean_relbias), size = 2.5) +
+  facet_wrap(vars(time), nrow = 1) +
+  xlab("Latent Correlation Ratio with Treated\n(Spuriously / Truly Correlated)") +
+  ylab("Mean Rel. Bias of \n E[Treatment Effect | Y]") +
+  scale_x_continuous(expand = expansion(mult = 0.3), n.breaks = 4) +
   scale_y_continuous(expand = expansion(mult = 0.1)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
   theme(strip.background = element_rect(fill = "white", color = "black"))
 
-ggsave(overfit_plot, device = "pdf", width = 6, height = 3.5, file = "../figs/ints_overfit.pdf", create.dir = TRUE)
+ggsave(overfit_plot, device = "pdf", width = 7, height = 2, file = "../figs/ints_overfit.pdf", create.dir = TRUE)

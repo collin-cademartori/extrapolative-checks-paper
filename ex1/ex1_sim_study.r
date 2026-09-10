@@ -220,7 +220,7 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       pred_width <- matrix(NA, nrow = T_times, ncol = N_units)
       for (n in 1:N_units) {
         for (t in 1:T_times) {
-          y_bounds <- quantile(stat_y_pred[, t, n], c(0.025, 0.975))
+          y_bounds <- quantile(stat_y_pred[, t, n], c(0.005, 0.995))
           pred_inc[t, n] <-
             (fit_ys[t, n] >= y_bounds[1]) &&
               (fit_ys[t, n] <= y_bounds[2])
