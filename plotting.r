@@ -208,10 +208,14 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     ) |>
     ungroup()
 
+  # cor_perc sets how many units are highlighted; the panel title reports the weakest
+  # correlation among them, which is what the captions describe.
   cor_cuts <- ys_long |>
     group_by(sample) |>
-    summarize(cor_cut = quantile(cor_y1, cor_perc)) |>
-    mutate(sample_name = paste0("Sample ", sample, " (", round(cor_cut, 2), ")"))
+    mutate(cor_cut = quantile(cor_y1, cor_perc)) |>
+    filter(unit != "A", cor_y1 >= cor_cut) |>
+    summarize(cor_cut = first(cor_cut), cor_min = min(cor_y1), .groups = "drop") |>
+    mutate(sample_name = paste0("Sample ", sample, " (", round(cor_min, 2), ")"))
 
   ys_long <- ys_long |>
     left_join(cor_cuts, by = "sample") |>
@@ -224,7 +228,7 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     ) |>
     mutate(obs = trans(obs)) |>
     select(-obs1) |>
-    select(-cor_cut)
+    select(-cor_cut, -cor_min)
 
   levels(ys_long$sample) <- as.character(cor_cuts$sample_name)
 

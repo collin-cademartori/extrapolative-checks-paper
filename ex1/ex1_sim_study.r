@@ -297,15 +297,11 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
 
   # Show a single unit's fits per rep
   plot_unit <- 2
-  # One posterior predictive replicate from the stationary arm, overlaid in red; y_pred is the
-  # latent signal plus observation noise, which is what S1 sees and the mean lines do not show.
-  # plot_unit selects an untreated unit; set it to 1 for the treated unit's counterfactual, and
-  # pred_rep = NULL to drop the overlay.
+  # plot_unit selects an untreated unit; set it to 1 for the treated unit's counterfactual.
   # Only the first PLOT_REPS datasets get a figure. `i` is the dataset index, not the rep counter,
   # so runs with different rep counts plot the same datasets.
   if (i <= PLOT_REPS) {
-    fit_plot <- plot_post_fits_stat(fit_ys, pns_means, pstat_means, unit = plot_unit,
-      pred_rep = fits$stat$y_pred[1, , plot_unit])
+    fit_plot <- plot_post_fits_stat(fit_ys, pns_means, pstat_means, unit = plot_unit)
     ggsave(
       fit_plot,
       file = paste0("../figs/sim_stat_figs/post_fit_plot_u", plot_unit, "_", i, ".png"),

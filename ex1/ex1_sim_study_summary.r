@@ -136,13 +136,14 @@ plot_error_bands <- function(df, y_label, label) {
 
 sim_study_abs_err <- summarize_error("mean")
 abs_mad_plot <- plot_error_bands(
-  sim_study_abs_err, "Average Absolute Error of Posterior\n Expected Treatment Effect", "(A)"
+  sim_study_abs_err, expression(bar(plain(err)) ~ "(average absolute error)"), "(A)"
 )
 ggsave(abs_mad_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_abs_err.pdf", create.dir = TRUE)
 
 sim_study_std_err <- summarize_error("absz")
 std_err_plot <- plot_error_bands(
-  sim_study_std_err, "Average Standardized Error of Posterior\n Expected Treatment Effect", "(B)"
+  sim_study_std_err,
+  expression(bar(plain(err))[plain(std)] ~ "(average standardized error)"), "(B)"
 )
 ggsave(std_err_plot, device = "pdf", width = 5, height = 4, file = "../figs/stat_std_err.pdf", create.dir = TRUE)
 
@@ -178,8 +179,8 @@ overfit_plot <- ggplot(data = sim_study_overfit) +
   geom_line(aes(x = mean_noise_abs, y = mean_absz, group = time), linewidth = 0.8) +
   geom_label(aes(label = model, x = mean_noise_abs, y = mean_absz), size = 2.5) +
   facet_wrap(vars(time), ncol = 1, strip.position = "right") +
-  xlab("Regression Coefficient of Signal\n Estimation Error on Noise\n(Treated Unit)") +
-  ylab("Average Standardized Error of  E[Treatment Effect | Y]") +
+  xlab(expression(atop(plain(OF)[plain(noise)], "(noise absorbed coef.)"))) +
+  ylab(expression(bar(plain(err))[plain(std)] ~ "(average standardized error)")) +
   scale_x_continuous(expand = expansion(mult = 0.2)) +
   scale_y_continuous(expand = expansion(mult = 0.15)) +
   theme_bw() +
