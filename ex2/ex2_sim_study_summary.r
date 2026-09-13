@@ -4,17 +4,13 @@ library(ggplot2)
 library(tidyr)
 
 source("../plotting.r")
-# Optional CLI argument selects the results file, so a fast-mode run can be summarized without
-# touching the full study's output: Rscript ex2_sim_study_summary.r sim_study_ints_fast.RData
+# Optional CLI argument selects the results file
 .res_file <- commandArgs(trailingOnly = TRUE)[1]
 if (is.na(.res_file)) .res_file <- "sim_study_ints.RData"
 cat(sprintf("\nLoading %s\n", .res_file))
 load(.res_file)
 
-# Drop the driver's bookkeeping columns (rep, failed, error): they are not per-arm statistics and
-# would otherwise be swept into the pivots that split names on "<model>_<statistic>". `level` and
-# `num_comp` stay, being the study's design factors. Failed tasks are reported before being
-# excluded, so a study that lost tasks is not summarized as though it were whole.
+# Report whether any fits failed
 if ("failed" %in% names(sim_study_ints)) {
   n_failed <- sum(sim_study_ints$failed, na.rm = TRUE)
   cat(sprintf("\nTasks loaded: %d", nrow(sim_study_ints)))
@@ -26,12 +22,8 @@ if ("failed" %in% names(sim_study_ints)) {
     cat("  (no failures)\n")
   }
 }
-# Post-run verification of the mixing claim: every retained fit must have finished below the
-# threshold on BOTH rhat criteria. The ladder escalates fits that miss them, but it breaks after
-# its last rung regardless, so a fit can exhaust the ladder and still be retained -- this is what
-# catches that. rhat_loadings is reported for context and is deliberately NOT checked: the
-# likelihood sees (Lambda, Phi) only through their product, so rotation-internal non-mixing there
-# is benign.
+# Post-run verification of that relevant R-hat metrics are below 1.01, i.e. that
+# all quantities necessary for desired inferences have converged.
 .rhat_check <- function(d, arms, thresh = 1.01) {
   cat("\nConvergence, every retained fit:\n")
   bad <- 0L
@@ -54,8 +46,7 @@ if ("failed" %in% names(sim_study_ints)) {
 
 sim_study_ints <- sim_study_ints |> select(-any_of(c("rep", "failed", "error")))
 
-# Posterior-predictive interval coverage, averaged per condition. The standardized error and
-# correlation summaries are conveyed by the plots below.
+# Posterior-predictive interval coverage.
 perc_summary <- sim_study_ints |>
   group_by(num_comp, level) |>
   summarize(
@@ -71,8 +62,7 @@ perc_summary <- sim_study_ints |>
 cat("\n99% posterior-predictive interval coverage by condition (no-int vs with-int):\n")
 print(perc_summary, width = Inf)
 
-## Statistic S2 predictive p-value (see paper Section 5), averaged separately for
-## each data generating condition (num_comp x level).
+## Statistic S2 predictive p-value (see paper Section 5).
 loc_cor_summary <- sim_study_ints |>
   group_by(num_comp, level) |>
   summarize(
@@ -86,23 +76,18 @@ loc_cor_summary <- sim_study_ints |>
 cat("\nS2 location-correlation predictive p-value by condition (no-int vs with-int):\n")
 print(loc_cor_summary, width = Inf)
 
-# The condition the figures show, taken from ex2_config.r so that the study, the derivation of
-# its constants, and this filter cannot state it differently. The numeric summaries above cover
-# whatever cells the results file happens to contain.
 source("ex2_config.r")
-PLOT_LEVEL <- STUDY_LEVEL
-PLOT_NUM_COMP <- STUDY_N_COMP
+PLOT_LEVEL <- DGP_LEVEL
+PLOT_NUM_COMP <- DGP_N_COMP_SPUR
 
-# Signed relative bias, mean_k / sd_k. The recorded absz_k is already an absolute value, so it
-# cannot be used here: the true effect is 0, so the signed quantity is what carries the bias.
+# Relative bias, mean_k / sd_k.
 for (.a in c("no_ints", "ints")) for (.k in 1:5) {
   sim_study_ints[[paste0(.a, "_relbias_", .k)]] <-
     sim_study_ints[[paste0(.a, "_mean_", .k)]] / sim_study_ints[[paste0(.a, "_sd_", .k)]]
 }
 
 # Mean and +/-2 SE bands over post-treatment time for a per-time statistic, for the no-intercepts
-# and with-intercepts models. stat is "mean" (absolute bias) or "relbias" (relative bias). Values
-# are SIGNED: the true effect is 0, so the mean of the posterior mean is the bias.
+# and with-intercepts models. Argument stat is "mean" (absolute bias) or "relbias" (relative bias). 
 summarize_error <- function(stat) {
   sim_study_ints |>
     filter(level == PLOT_LEVEL, num_comp == PLOT_NUM_COMP) |>
@@ -128,7 +113,7 @@ summarize_error <- function(stat) {
     )
 }
 
-# Per-condition time series of the two models' means with shaded +/-2 SE bands
+# Time series of the two models' means with shaded +/-2 SE bands
 # (no-intercepts solid, with-intercepts dashed).
 plot_error_bands <- function(df, y_label, label) {
   ggplot(data = df) +
@@ -168,14 +153,6 @@ sim_study_overfit <- sim_study_ints |>
     names_transform = list(time = as.integer),
     names_pattern = "^(no_ints|ints)_(.*)$"
   ) |>
-  # How far the model leans on the spurious comparators rather than the true ones: the mean
-  # modelled ABSOLUTE correlation with the spurious units over the mean with the true ones. Units
-  # 1:2 are the true comparators and 3:(2 + num_comp) the spurious ones, in the DGP's generating
-  # order. cor_sq is a SQUARED correlation, so each term is rooted before averaging.
-  #
-  # A ratio, not a difference, and larger means more overfitting -- matching the direction of ex1's
-  # noise-absorption metric. 1 is the point at which the model correlates with the two groups
-  # equally and so cannot tell them apart.
   mutate(
     sep = rowMeans(sqrt(pick(num_range("cor_sq_", 3:(2 + PLOT_NUM_COMP))))) /
       ((sqrt(cor_sq_1) + sqrt(cor_sq_2)) / 2)

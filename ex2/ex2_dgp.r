@@ -12,12 +12,13 @@ ruv <- function(d) {
 # treated unit and in their long-run mean, structured so that means and latent
 # correlations are related.
 #
-# Returns Y (T x N, the fit orientation), the group of each column, and the
+# Returns Y, the group of each column, and the
 # iid noise SD used.
 sim_model_intercepts <- function(
-    N_unc = 2, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = 2,
+    N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = DGP_N_COMP_SPUR,
+    N_unc = DGP_N_UNITS - 1 - N_comp_true - N_comp_spur,
     T_times = DGP_T_TIMES, T_treated = DGP_T_TREATED,
-    K_unc = DGP_K_UNC, sim = DGP_SIM, level_offset) {
+    K_unc = DGP_K_UNC, sim = DGP_SIM, level_offset = DGP_LEVEL) {
   N_units <- 1 + N_comp_true + N_comp_spur + N_unc
   K_gen <- 2 + K_unc
 
@@ -44,11 +45,11 @@ sim_model_intercepts <- function(
   facs <- rbind(f_treat, f_alt, f_unc)
   loads <- matrix(nrow = N_units, ncol = K_gen)
   loads[1, ] <- c(1, rep(0, K_gen - 1))
-  # True comparators load on the treated factor: genuine correlation throughout.
+  # True comparators load on the treated factor.
   for (n in seq_len(N_comp_true)) {
     loads[1 + n, ] <- c(sqrt(sim), 0, sqrt(1 - sim) * ruv(K_gen - 2))
   }
-  # Spurious comparators load on f_alt: pre-treatment correlation only.
+  # Spurious comparators load on f_alt.
   for (n in seq_len(N_comp_spur)) {
     loads[1 + N_comp_true + n, ] <- c(0, sqrt(sim), sqrt(1 - sim) * ruv(K_gen - 2))
   }
@@ -57,7 +58,6 @@ sim_model_intercepts <- function(
     loads[1 + N_comp_true + N_comp_spur + n, ] <- c(0, 0, ruv(K_gen - 2))
   }
 
-  # Treated and true comparators sit high (via f_treat), spurious low (via f_alt).
   lat <- loads %*% facs
   noise_sd <- DGP_NOISE_FRAC * mean(apply(lat, 1, sd))
   Y <- t(lat + rnorm(nrow(lat) * ncol(lat), sd = noise_sd))

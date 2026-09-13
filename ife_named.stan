@@ -135,6 +135,10 @@ transformed data {
   // level corner seeds the integrated delta = cumsum(delta_raw). Scaled to the
   // treated unit's error scale by sigma[1] in the prior below.
   matrix[num_treated, num_treated] effects_prec = inverse_spd(errors_cov[1:num_treated, 1:num_treated]);
+  if(nonstationary) {
+    // errors_cov is stored divided by 2 (see above); halve the precision so delta has sd delta_scale.
+    effects_prec = 0.5 * effects_prec;
+  }
 
 
 }
@@ -196,10 +200,7 @@ transformed parameters {
   matrix[T_times, K_latent] Phi;
   for(k in 1:K_latent) {
     real proc_scale = factor_means ? sqrt(omega_sq) : 1;
-    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, 0);
-    if(factor_means == 1) {
-      Phi[:,k] = Phi_means[k] + (Phi[:,k] - mean(Phi[:,k]));
-    }
+    Phi[:,k] = ar_process(Phi_innovations[:,k], rho[k], proc_scale, Phi_means[k]);
   }
 
   vector[M_units] gamma;

@@ -1,7 +1,7 @@
-## This file runs the simulation study for the intercepts example, fitting the
+## This file runs the simulation study for the intercepts example,
 ## fitting the models with and without intercepts to data generated from an
 ## adversarial process whereby some units are simulated to have different
-## long run means than the treated but spuriously correlation in the pre-
+## long run means than the treated but spuriously correlated in the pre-
 ## treatment period only.
 
 library(foreach)
@@ -12,10 +12,9 @@ library(purrr)
 # Command line: Rscript ex2_sim_study.r [n_cores] [mode] [reps]
 #   n_cores  worker count (default: half the physical cores, less one)
 #   mode     "full" (default) or "fast"
-#   reps     overrides the mode's default rep count
+#   reps     number of simulation replications to perform
 #
-# In fast mode, chains are shorter and never escalated. Elevated rhat_M is expected there and says
-# nothing about the specification; never report fast-mode numbers.
+# In fast mode, chains are shorter and never escalated.
 .args <- commandArgs(trailingOnly = TRUE)
 requested_cores <- suppressWarnings(as.integer(.args[1]))
 STUDY_MODE <- if (length(.args) >= 2 && tolower(.args[2]) %in% c("fast", "f")) "fast" else "full"
@@ -25,9 +24,8 @@ n_cores <- if (!is.na(requested_cores) && requested_cores >= 1) {
 } else {
   max(1, round(detectCores() / 2) - 1)
 }
-# Redirect temporary files to the file system rather than RAM, so that a long run with many
-# parallel samplers cannot exhaust a tmpfs /tmp. Override by exporting either variable before
-# launching.
+# Redirect temporary files to filesystem to reduce pressure on RAM from
+# maintaining many independent R instances when running many parallel workers.
 scratch_root <- Sys.getenv("STUDY_SCRATCH", file.path(getwd(), ".scratch"))
 dir.create(scratch_root, showWarnings = FALSE, recursive = TRUE)
 if (!nzchar(Sys.getenv("CMDSTAN_OUTPUT_DIR")))
@@ -43,16 +41,11 @@ cat(sprintf("  scratch: CMDSTAN_OUTPUT_DIR=%s  TMPDIR=%s\n",
 cl <- makeCluster(n_cores, outfile = "")
 registerDoParallel(cl)
 
-# PSOCK workers may start in a different working directory than the master; sync
-# them so worker-side relative paths (progress.log, ggsave to ../figs) resolve the
-# same as here.
+# Set PSOCK workers' working directories to current working directory so
+# relative paths resolve correctly.
 invisible(clusterCall(cl, setwd, getwd()))
 
-# Pre-attach the workers' packages quietly, so their startup banners don't clutter
-# the console (outfile = "" surfaces all worker output).
-# Workers source the shared config themselves rather than receiving each constant through
-# .export: adding a constant later would otherwise need remembering to export it, and a worker
-# running a different value than the master is exactly the drift ex2_config.r exists to prevent.
+# Attach the workers' packages, suppressing load messages.
 invisible(clusterCall(cl, source, "ex2_config.r"))
 invisible(clusterCall(cl, source, "ex2_dgp.r"))
 invisible(clusterEvalQ(cl, suppressPackageStartupMessages({
@@ -69,10 +62,7 @@ source("../sample_model.r")
 source("../pathfinder_init.r")
 source("../plotting.r")
 
-# Per-worker progress: each worker appends a running count of completed tasks to a
-# shared log. cat(append = TRUE) flushes every write, so it shows up live via
-# `tail -f progress.log` -- unlike message()/outfile, which block-buffers a
-# redirected stream (nothing appears until the worker exits).
+# Workers call this function to write progress to a common log file
 worker_progress <- function(label, logfile = "progress.log") {
   n <- get0(".worker_done", envir = globalenv(), ifnotfound = 0L) + 1L
   assign(".worker_done", n, envir = globalenv())
@@ -82,22 +72,17 @@ worker_progress <- function(label, logfile = "progress.log") {
   ), file = logfile, append = TRUE)
 }
 
-# Fits that miss the convergence criterion are refit with more iterations and a higher
-# adapt_delta, up to two extra rounds. The mechanism is shared with ex1 and lives in
-# sample_model.r; only the rungs below are per-example. rhat_M is the criterion that binds in
-# practice here -- the ess and divergence thresholds have never triggered.
+# Runs with bad diagnostics (high R-hat or divergences) are refit with more iterations and 
+# a higher adapt_delta, up to two extra rounds. 
+# These constant defines the number of increased iterations.
 EX2_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)) else
   escalation_ladder(iter = c(3000L, 6000L), warm = c(1500L, 2000L))
 ESCALATE_MAX <- EX2_LADDER$max_rounds   # seeds are drawn one per fit per round
 
-# Base sampling length, per mode. Both arms share these.
+# Base sampling length.
 EX2_ITER <- if (STUDY_MODE == "fast") 500L else 1500L
 EX2_WARM <- if (STUDY_MODE == "fast") 500L else 1000L
 
-# Column ordering for the triangular (Cholesky) loadings: the treated unit stays first, then the
-# untreated columns most orthogonal to those already chosen. A reparameterization only -- the
-# fitted means, treatment effect and check statistics do not depend on it, though the per-unit
-# outputs need mapping back (see unpermute_untreated).
 # Identifies the model configuration a checkpoint set was written under, so a set from a different
 # one is not resumed into this run.
 ckpt_fingerprint <- function(arms, config_file) {
@@ -105,7 +90,7 @@ ckpt_fingerprint <- function(arms, config_file) {
           unname(tools::md5sum(config_file))), collapse = " ")
 }
 
-# Refuse to resume a set written under a different configuration, rather than silently mixing it in.
+# Refuse to resume a set written under a different configuration.
 ckpt_check_fingerprint <- function(ckpt_dir, arms, config_file) {
   fp_file <- file.path(ckpt_dir, "FINGERPRINT")
   fp <- ckpt_fingerprint(arms, config_file)
@@ -126,6 +111,8 @@ ckpt_check_fingerprint <- function(ckpt_dir, arms, config_file) {
   invisible(fp)
 }
 
+# Column ordering for the triangular (Cholesky) loadings: the treated unit stays first, then the
+# untreated columns most orthogonal to those already chosen.
 anchor_order <- function(y, K) {
   N <- ncol(y)
   yc <- scale(y, center = TRUE, scale = FALSE)
@@ -141,9 +128,8 @@ anchor_order <- function(y, K) {
   c(sel, remaining)
 }
 
-# Map a per-untreated-unit vector returned from a fit on anchor-permuted data back to
-# the original unit order. `perm` is the column permutation (perm[1] == 1, the treated
-# unit); element j of `v` belongs to permuted column j + 1 = original column perm[j+1].
+# Map vector of per-unit summaries output from Stan model back to original
+# order (before reordering applied by [anchor_order] above).
 unpermute_untreated <- function(v, perm) {
   out <- numeric(length(v))
   out[perm[-1] - 1] <- v
@@ -153,9 +139,7 @@ unpermute_untreated <- function(v, perm) {
 
 run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, plot_iters = 0,
                                progress_log = NULL) {
-  # Fixed total of 8 units; N_comp spurious comparators trade off against the
-  # uncorrelated fillers (1 treated + 2 true + N_comp spurious + N_unc = 8), so the
-  # swept quantity is the *share* of units spuriously correlated with the treated.
+
   N_unc <- DGP_N_UNITS - 1 - DGP_N_COMP_TRUE - N_comp
   gen <- sim_model_intercepts(
     N_unc = N_unc, N_comp_true = DGP_N_COMP_TRUE, N_comp_spur = N_comp, K_unc = DGP_K_UNC,
@@ -166,45 +150,23 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
 
-  # Fit on anchor-ordered columns (treated stays first) so the leading K x K loading
-  # block is full rank; per-unit outputs are mapped back to the original order after the
-  # fits. The plots below use the original test_ys.
+  # Re-order columns (treated stays first) so the leading K x K loading
+  # block is full rank.
   perm <- anchor_order(test_ys, K_latent)
-  # perm[1] == 1 by construction. Everything downstream that indexes the treated unit by position
-  # (delta, and unpermute_untreated's assumption that element j of a per-untreated vector belongs to
-  # permuted column j + 1) depends on it, so make the dependency explicit rather than implicit.
   stopifnot(perm[1] == 1)
   fit_ys <- test_ys[, perm]
 
-  # Draw every Stan seed up front, before any sample_model() call: cmdstanr's
-  # $sample() advances R's global RNG, so a seed drawn after a fit would not be
-  # reproducible. Invariant: never derive a seed after a fit. One seed per model PER ESCALATION
-  # ROUND, so a refit is reproducible too.
   fit_seeds <- matrix(sample.int(.Machine$integer.max, 2L * ESCALATE_MAX), nrow = 2L)
 
   fits <- list()
 
   # ---- scales ---------------------------------------------------------------------------------
-  # sigma differs between the arms by design: no_ints must produce each unit's level from its factor
-  # means, so it is anchored on RMS(y_n), while ints has gamma for the level and is anchored on
-  # sd(y_n). ex1's 2 x RMS correction does not apply here, since both fits have a level mechanism.
-  #
-  # eta does NOT differ between the arms, which is the point of this study: it is one shared
-  # observation-error sd on the data's own scale, so the justified sigma difference cannot leak into
-  # the error scale, where nothing would justify it. Values come from ex2_config.r and their
-  # derivation from ex2_derive_scales.r.
-  # All scale anchors use the PRE-treatment window only, so that a real treatment effect
-  # cannot inflate the scales of the priors that estimate it.
   pre_y <- fit_ys[seq_len(nrow(fit_ys) - NUM_TREATED), , drop = FALSE]
   sd_y <- apply(pre_y, 2, sd)
   eta_anchor <- mean(sd_y)
   eta_loc <- ETA_FRAC_EX2 * eta_anchor
   eta_scale <- ETA_CV_EX2 * eta_loc
-  # Effect-prior scale: the treated unit's PRE-treatment sd. Computed from the data alone, so both
-  # arms receive the identical value. Pre-treatment only, since including the treatment window would
-  # let a large effect widen its own prior.
   delta_scale_ex2 <- DELTA_FRAC_EX2 * sd(pre_y[, 1])
-  # Unit-intercept prior, anchored on the data rather than fixed: see ex2_config.r.
   int_loc_ex2 <- mean(pre_y)
   int_scale_ex2 <- INT_FRAC * sd(colMeans(pre_y))
 
@@ -252,9 +214,6 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
   )
   fits$ints$name <- "ints"
 
-  # Map per-unit model outputs (indexed by permuted untreated columns) back to the
-  # original unit order, so downstream storage and the plots align with test_ys /
-  # gen$groups. Scalar outputs (delta, loc_cor_pval, pred_perc) are permutation-invariant.
   for (m in c("no_ints", "ints")) {
     fits[[m]]$cor_sq <- unpermute_untreated(fits[[m]]$cor_sq, perm)
     fits[[m]]$abs_cors_err <- unpermute_untreated(fits[[m]]$abs_cors_err, perm)
@@ -264,8 +223,7 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
     map(function(pfit) {
       res <- list()
 
-      # Posterior-predictive interval coverage, per (time, unit) as ex1 does. Compared against
-      # fit_ys, which is in the same anchor-permuted column order as y_pred.
+      # Posterior-predictive interval coverage, per (time, unit). Compared against fit_ys.
       stat_y_pred <- pfit$y_pred
       pred_inc <- matrix(NA, nrow = T_times, ncol = N_units)
       pred_width <- matrix(NA, nrow = T_times, ncol = N_units)
@@ -279,9 +237,6 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
       res$pred_perc <- mean(pred_inc)
       res$pred_width <- mean(pred_width)
 
-      # The estimated error scale, on the data's own scale. In absolute mode err_sd is a single
-      # shared eta and draws("tau") returns eta / sigma[n], so multiply back by this arm's sigma[1].
-      # Recorded with its prior tail so a prior-data conflict on the error scale is visible.
       sigma_1 <- if (pfit$name == "no_ints") overall_scales[1] else overall_sds[1]
       eta_draws <- pfit$err_scale * sigma_1
       res$eta_med <- median(eta_draws)
@@ -308,10 +263,9 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
       pred_mad <- pfit$mean_abs_diffs
       res$pred_mad <- pred_mad
 
-      # Convergence diagnostics recorded for every fit, so the run can be audited rather than only
-      # its failures. rhat_M is the one that certifies delta: the likelihood sees (Lambda, Phi) only
-      # through M = Lambda_Phi, with the intercepts entering additively and the factor means folding
-      # into Phi.
+      # Convergence diagnostics recorded for every fit, so the run can be audited.
+      # rhat_M checks convergence of M = Lambda %*% Phi, the product of loadings and
+      # factors, through which the likelihood depends on the loadings and factors.
       sdg <- pfit$sampler_diag
       res$rhat_max <- sdg$rhat_max
       res$rhat_M <- sdg$rhat_M
@@ -352,9 +306,7 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
 }
 
 run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, levels, seed, plot_iters = 3) {
-  # Worker-called functions must be exported explicitly (foreach only auto-exports
-  # locals like K_latent); posterior is attached for sample_model()'s unqualified
-  # extract_variable_array() call, ggplot2 for the per-condition figures.
+
   exp_vars <- c(
     "run_sim_intercepts",
     "worker_progress", "sample_model", "ife_mod", "plot_intercepts_fits",
@@ -365,9 +317,6 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, levels,
   )
   exp_packages <- c("cmdstanr", "posterior", "ggplot2", "dplyr")
 
-  # Flatten the sim x N_comp x rep design into a single (non-nested) foreach, so
-  # %dorng% gives each task a reproducible RNG stream invariant to worker count.
-  # Invariant: keep this a single, non-nested loop.
   grid <- expand.grid(rep = seq_len(reps), N_comp = N_comps, level = levels)
 
   cat(sprintf(
@@ -382,14 +331,11 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, levels,
     length(levels) * length(N_comps), reps, nrow(grid),
     getDoParWorkers(), seed
   ))
-  # Absolute log path, so workers write it where the master expects regardless of
-  # their working directory.
+
   progress_log <- file.path(getwd(), "progress.log")
   t0 <- Sys.time()
 
-  # Each task writes its own row as it finishes, and a rerun picks up the rows that already exist.
-  # A task that errors records failed = TRUE and the study continues. The directory is keyed to
-  # mode, seed and grid size; delete it to force a full recompute.
+  # Each task writes its own row as it finishes.
   ckpt_dir <- file.path(getwd(),
     sprintf("ckpt_ints_%s_seed%d_n%d", STUDY_MODE, seed, nrow(grid)))
   dir.create(ckpt_dir, showWarnings = FALSE)
@@ -399,20 +345,16 @@ run_sim_study_intercepts <- function(K_latent = K_LATENT, reps, N_comps, levels,
     cat(sprintf("  resuming: %d of %d tasks already checkpointed in %s\n\n",
       n_resume, nrow(grid), basename(ckpt_dir)))
   } else {
-    cat("", file = progress_log) # truncate: fresh per-worker progress log per run
+    cat("", file = progress_log)
   }
 
   study_res <-
     foreach(
       rep_i = grid$rep, N_comp = grid$N_comp, level = grid$level, task_i = seq_len(nrow(grid)),
-      # bind_rows rather than rbind: a failed task contributes a short row, and rbind would error on
-      # the column mismatch instead of recording the failure.
       .combine = function(...) dplyr::bind_rows(...),
       .export = exp_vars, .packages = exp_packages,
       .options.RNG = seed
     ) %dorng% {
-      # The full condition triple goes in the filename, so a checkpoint can never be reused for a
-      # different cell of the grid even if the grid ordering were to change.
       ckpt_file <- file.path(ckpt_dir,
         sprintf("task_%05d_lv%g_nc%d_rep%04d.rds", task_i, level, N_comp, rep_i))
       if (file.exists(ckpt_file)) {
@@ -459,14 +401,10 @@ cat(sprintf("\n=== mode: %s | reps/cond: %d | iter/warm: %d/%d | escalation: %s 
 if (STUDY_MODE == "fast")
   cat("    FAST MODE -- for specification search only. Elevated rhat_M is expected here and says\n",
       "   nothing about the specification. Do not report these numbers.\n", sep = "")
-# One condition, not the full grid: 3 spurious comparators at the wider level gap. The other cells
-# established that the effect is not specific to this configuration; the reported figures show this
-# one. STUDY_LEVEL and STUDY_N_COMP are read here, by ex2_derive_scales.r when it calibrates the
-# constants, and by ex2_sim_study_summary.r when it filters for plotting, so the three cannot drift.
 sim_study_ints <- run_sim_study_intercepts(
   reps = study_reps,
-  N_comps = STUDY_N_COMP,
-  levels = STUDY_LEVEL,
+  N_comps = DGP_N_COMP_SPUR,
+  levels = DGP_LEVEL,
   K_latent = K_LATENT,
   seed = 52918,
   plot_iters = 50
@@ -474,9 +412,8 @@ sim_study_ints <- run_sim_study_intercepts(
 
 stopCluster(cl)
 
-# Save the raw study results; numeric summaries and plots are produced by
-# ex2_sim_study_summary.r (run it to view the results).
-# Mode-keyed output, so a quick fast-mode check cannot silently destroy the full study's results.
+# Save the raw study results. Numeric summaries and plots are produced by
+# ex2_sim_study_summary.r
 out_file <- if (STUDY_MODE == "fast") "sim_study_ints_fast.RData" else "sim_study_ints.RData"
 save(sim_study_ints, file = out_file)
 cat(sprintf("Results saved to %s -- run `Rscript ex2_sim_study_summary.r %s` to summarize.\n",

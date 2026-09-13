@@ -24,7 +24,6 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
     xlab("Time") +
     ylab("Outcome")
 
-  # Thin the x-axis ticks (e.g. for long horizons where the default breaks collide).
   if (!is.null(n_x_breaks)) {
     plot <- plot + scale_x_continuous(n.breaks = n_x_breaks)
   }
@@ -40,21 +39,9 @@ plot_data_units <- function(data, data_comp = NULL, unit, samples = 16, hide_y =
   return(plot)
 }
 
-# Observed series (grey) and the three posterior-mean fits (nonstationary black;
-# stationary weak/strong blue solid/dashed) for a single unit. data, post_ns, post_2,
-# post_1 are all time x unit matrices; `unit` selects the column to show.
-# pred_rep: optionally, a SINGLE posterior predictive replicate for `unit`, drawn on top in red.
-# Pass NULL (the default) to switch it off.
-#
-# Why it is worth seeing: the other three lines are posterior means of Y_latent, the noiseless
-# latent signal. Statistic S1 is instead computed on Y_pred = that signal plus observation noise of
-# scale tau * sigma. The two can look very different, so a model whose fitted mean tracks a trend
-# closely can still fail S1 because the trend in its REPLICATES is diluted by noise. Only the
-# replicate shows what S1 actually sees. One is drawn rather than several deliberately -- the
-# pattern is meant to be read across datasets, and an envelope of draws would clutter the panel.
-# Observed series in grey, the nonstationary arm's posterior mean in black, the stationary arm's in
-# blue. Two arms, not three: ex1 previously fitted a second stationary arm differing only in its
-# error-scale prior, which is gone.
+# Observed series (grey) and the posterior mean latent series under the nonstationary (black) and
+# stationary (blue) models, for one unit. data, post_ns, and post_stat are time x unit matrices.
+# pred_rep optionally adds one posterior predictive draw for the unit in red.
 plot_post_fits_stat <- function(data, post_ns, post_stat, unit, pred_rep = NULL) {
   series <- function(m) data.frame(time = seq_len(nrow(m)), obs = m[, unit])
 
@@ -67,7 +54,6 @@ plot_post_fits_stat <- function(data, post_ns, post_stat, unit, pred_rep = NULL)
     xlab("Time") +
     ylab("Outcome")
 
-  # Added last so it draws on top of the means.
   if (!is.null(pred_rep)) {
     plot <- plot + geom_line(
       data = data.frame(time = seq_along(pred_rep), obs = as.numeric(pred_rep)),
@@ -122,27 +108,19 @@ plot_data_matrix_post <- function(ys, post_ys) {
   return(plot)
 }
 
-# Comparator-status plot for the intercepts simulation, for a single model fit. Each
-# simulated dataset is one line per unit. 
+# One dataset and one model fit from the intercepts example, one line per unit. Before treatment,
+# untreated units are shaded by the model's posterior mean squared correlation with the treated
+# unit. From the treatment time on, units are colored by their group in the data generating process.
 plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   T_times <- nrow(test_ys)
   T_pre <- T_times - num_treated
-  # Color switches (and the marker sits) at the last pre-treatment time, so the
-  # gradient spans only fully-pre-treatment segments; the segment crossing into
-  # treatment takes the post (true-group) color.
   boundary <- T_pre
 
-  # Blue gradient over a fixed [0, 1] correlation domain, so shade intensity is
-  # comparable across datasets and models. The top of the ramp matches the "true"
-  # group color, so a correctly-identified comparator holds one blue across the
-  # boundary while a spurious one flips blue -> vermilion (the reveal).
   blue_ramp <- colorRamp(c("#d6e2ff", "#0072b2"))
   grad_color <- function(x) {
     m <- blue_ramp(pmin(pmax(x, 0), 1))
     rgb(m[, 1], m[, 2], m[, 3], maxColorValue = 255)
   }
-  # Okabe-Ito-based colorblind-safe groups: treated black, true blue (matches the
-  # gradient top), spurious vermilion (warm reveal against the blue), uncorrelated grey.
   group_color <- c(
     treated = "#000000", true = "#0072b2",
     spurious = "#d55e00", uncorrelated = "#999999"
@@ -154,15 +132,10 @@ plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   df$unit <- as.integer(df$unit)
   df$period <- ifelse(df$time <= boundary, "pre", "post")
 
-  # Default color is the unit's true-group color (used post-treatment and for the
-  # treated unit throughout); untreated pre-treatment rows overwrite it with the
-  # model-inferred correlation gradient.
   df$color <- unname(group_color[groups[df$unit]])
   pre_un <- df$period == "pre" & groups[df$unit] != "treated"
   df$color[pre_un] <- grad_color(cor_sq[df$unit[pre_un] - 1])
 
-  # Repeat the boundary time in the post segment (true-group color) so each line
-  # connects across the switch rather than breaking at it.
   bridge <- df[df$time == boundary, ]
   bridge$period <- "post"
   bridge$color <- unname(group_color[groups[bridge$unit]])
@@ -183,8 +156,8 @@ plot_intercepts_fits <- function(test_ys, cor_sq, groups, num_treated) {
   return(plot)
 }
 
-# Plot all series in one frame: grey for the rest, blue for the units most
-# correlated with the treated unit, and green for the treated unit itself.
+# Plot all series in one frame. Units most correlated with the treated unit are blue,
+# treated is green, others are grey.
 plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_samples = 9) {
   trans <- ifelse(use_exp, exp, function(x) x)
 
@@ -208,8 +181,6 @@ plot_data_highlight <- function(data, cor_perc = 0.95, use_exp = TRUE, num_sampl
     ) |>
     ungroup()
 
-  # cor_perc sets how many units are highlighted; the panel title reports the weakest
-  # correlation among them, which is what the captions describe.
   cor_cuts <- ys_long |>
     group_by(sample) |>
     mutate(cor_cut = quantile(cor_y1, cor_perc)) |>
