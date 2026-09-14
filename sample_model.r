@@ -190,24 +190,25 @@ sample_model <- function(
     try(unlink(model_sample$output_files(), force = TRUE), silent = TRUE)
     return(out)
   } else if (type == "posterior") {
-    y_means_all <-
-      extract_variable_array(model_sample$draws("Y_latent"), "Y_latent")
-    y_means_post <- y_means_all[sample_index, 1, , ]
+    # Posterior summaries pool every chain: [iteration, chain, ...] -> [iteration x chain, ...].
+    pool_chains <- function(a) { d <- dim(a); dim(a) <- c(d[1] * d[2], d[-(1:2)]); a }
 
-    y_pred_all <-
-      extract_variable_array(model_sample$draws("Y_pred"), "Y_pred")
-    y_pred_post <- y_pred_all[sample_index, 1, , ]
+    y_means_post <- pool_chains(extract_variable_array(model_sample$draws("Y_latent"), "Y_latent"))
+    y_pred_post <- pool_chains(extract_variable_array(model_sample$draws("Y_pred"), "Y_pred"))
 
-    effects <-
-      extract_variable_array(model_sample$draws("delta"), "delta")[, 1, ]
+    effects <- pool_chains(extract_variable_array(model_sample$draws("delta"), "delta"))
     effect_means <- colMeans(effects)
     effect_sds <- apply(effects, 2, sd)
+    # Exact posterior tail area of a zero effect, from the draws rather than a normal approximation.
+    # 0 lies outside the central (1 - a) posterior interval exactly when effect_tail < a.
+    effect_p_pos <- colMeans(effects > 0)
+    effect_tail <- 2 * pmin(effect_p_pos, 1 - effect_p_pos)
 
     err_scale_mat <- posterior::as_draws_matrix(model_sample$draws("tau"))
     err_scale <- as.numeric(err_scale_mat[, 1])
     mad <- mean(as.numeric(model_sample$draws("mean_abs_diffs")))
 
-    cor_sq <- extract_variable_array(model_sample$draws("cor_sq"), "cor_sq")[, 1, ]
+    cor_sq <- pool_chains(extract_variable_array(model_sample$draws("cor_sq"), "cor_sq"))
     cor_sq_mean <- colMeans(cor_sq)
 
     abs_cor_pred <- as.numeric(model_sample$draws("time_cor_pred"))
@@ -234,6 +235,8 @@ sample_model <- function(
       y_pred = y_pred_post,
       effect_means = effect_means,
       effect_sds = effect_sds,
+      effect_p_pos = effect_p_pos,
+      effect_tail = effect_tail,
       mean_abs_diffs = mad,
       cor_sq = cor_sq_mean,
       abs_cors_err = cor_err_mean,
