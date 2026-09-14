@@ -1,6 +1,6 @@
 ## Derivation of the two sigma multiples used by ex1:
 ##
-##     SIGMA_MULT_NONSTAT = 1/6.2     SIGMA_MULT_STAT = 2
+##     SIGMA_MULT_NONSTAT = 1/4.769     SIGMA_MULT_STAT = 2
 ##
 ## Both mulitply the observed RMS of each dataset to give the value of sigma used by each model.
 ## This file exists to ensure these constants satisfy the desired constraints
@@ -24,7 +24,7 @@ M_UNITS <- N_UNITS
 DGP_ALPHA_DIAG <- ALPHA_DIAG
 FIT_ALPHA_DIAG <- ALPHA_DIAG
 
-# The nonstationary arm's error, as a multiple of its own sigma: the DGP's ratio, 2/1. Fixing it
+# The nonstationary arm's error, as a multiple of its own sigma: the DGP's ratio DGP_ETA / DGP_SIGMA. Fixing it
 # here is what makes that arm's multiple a one-line solve rather than a root-find. RHO_NONSTAT
 # equals DGP_RHO in the config, deliberately -- with a common rho prior, "reproduce the RMS of the
 # data" and "receive the DGP's own sigma" are the SAME condition, so the nonstationary multiple has
@@ -119,7 +119,10 @@ cat("  derivation is invariant to the overall scale of the data.\n")
 
 ## --- SIGMA_MULT_NONSTAT -------------------------------------------------------------------------
 ## Simulation study defines sigma = c * RMS(y) for each dataset y. Here we take RMS = 1 and solve
-## for c. In this model we also have eta = 2 * sigma, so both scales are proportional to c.
+## for c. In this model eta = (DGP_ETA / DGP_SIGMA) * sigma, so both scales are proportional to c.
+## The simulated datasets also rotate DGP_N_ALIGNED donors' loadings toward the treated unit. That
+## keeps each loading row's length, and moves E[RMS] by under 1% (checked by simulation), so it is
+## omitted here.
 
 ns1 <- prior_moments(1, ETA_OVER_SIGMA_NONSTAT * 1, RHO_NONSTAT[1], RHO_NONSTAT[2],
                      nonstationary = TRUE, alpha_diag = FIT_ALPHA_DIAG)
@@ -133,8 +136,9 @@ cat(sprintf("  RMS is proportional to sigma here, so the self-consistent multipl
 cat(sprintf("  committed value = %.4f\n", SIGMA_MULT_NONSTAT))
 cat("\n  Because this arm shares the DGP's rho prior, that one solve satisfies both criteria at\n")
 cat("  once: the arm reproduces the RMS of the data it is fitted to, AND it receives the DGP's own\n")
-cat(sprintf("  sigma and eta -- %.3f and %.3f against the true 1.000 and 2.000. There is no\n",
-            mult_nonstat * unname(ns1["rms"]), ETA_OVER_SIGMA_NONSTAT * mult_nonstat * unname(ns1["rms"])))
+cat(sprintf("  sigma and eta -- %.3f and %.3f against the true %.3f and %.3f. There is no\n",
+            mult_nonstat * unname(ns1["rms"]), ETA_OVER_SIGMA_NONSTAT * mult_nonstat * unname(ns1["rms"]),
+            DGP_SIGMA, DGP_ETA))
 cat("  trade-off to adjudicate here, unlike the stationary multiple below.\n")
 cat("\n  Why the multiple is so far below 1: sigma scales the DIFFERENCED signal in this branch\n")
 cat("  (Y_means = sigma * Lambda_Phi, then cumulative_sum), while the anchor is measured on the\n")

@@ -55,7 +55,7 @@ if ("failed" %in% names(sim_study_stat)) {
 
 .rhat_check(sim_study_stat, c("nonstat", "stat"))
 
-sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error")))
+sim_study_stat <- sim_study_stat |> select(-any_of(c("rep", "unit", "failed", "error", "aligned_units")))
 
 # The numeric results, the curves and the overfit trade-off being plotted below: 99%
 # posterior-predictive interval coverage, and the time-correlation statistic (S1) 

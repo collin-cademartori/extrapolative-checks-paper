@@ -177,10 +177,15 @@ sample_model <- function(
     ys_latent_all <-
       extract_variable_array(model_sample$draws("Y_latent"), "Y_latent")
     ys_latent <- ys_latent_all[sample_index, 1, , ]
+    # Loadings and factor paths of the same draws, so a caller can alter a draw's latent structure.
+    lambda <- extract_variable_array(model_sample$draws("Lambda"), "Lambda")[sample_index, 1, , , drop = FALSE]
+    phi <- extract_variable_array(model_sample$draws("Phi"), "Phi")[sample_index, 1, , , drop = FALSE]
 
     out <- list(
       ys = ys_prior,
-      ys_latent = ys_latent
+      ys_latent = ys_latent,
+      Lambda = array(lambda, dim(lambda)[-2]),
+      Phi = array(phi, dim(phi)[-2])
     )
     try(unlink(model_sample$output_files(), force = TRUE), silent = TRUE)
     return(out)

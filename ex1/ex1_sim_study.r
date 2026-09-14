@@ -1,6 +1,6 @@
-## Simulation study for the nonstationary example. Fits a correctly specified nonstationary model
-## and a misspecified stationary one to datasets drawn from the nonstationary model's prior
-## predictive distribution.
+## Simulation study for the nonstationary example. Fits a nonstationary model with the correct factor
+## dynamics and a misspecified stationary one to datasets drawn from the nonstationary model's prior
+## predictive distribution, with DGP_N_ALIGNED donors aligned to the treated unit (ex1_config.r).
 
 library(foreach)
 library(doParallel)
@@ -128,15 +128,32 @@ anchor_order <- function(y, K) {
 
 run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
   test_ys <- test_data$ys[i, , ]
+  test_latent <- test_data$ys_latent[i, , ]
   N_units <- ncol(test_ys)
   T_times <- nrow(test_ys)
+
+  # Aligned donors. Each chosen untreated unit keeps its loading length, but its direction becomes
+  # sqrt(DGP_ALIGN) along factor 1 (the treated unit's only factor, by the triangular loadings) plus
+  # sqrt(1 - DGP_ALIGN) along a random direction in the others. The draw's factor paths and noise are
+  # kept, so only those units' latent paths change. Drawn before any fit, from this task's RNG stream.
+  aligned <- sort(sample(2:N_units, DGP_N_ALIGNED))
+  L <- test_data$Lambda[i, , ]
+  L_new <- L
+  for (n in aligned) {
+    u <- rnorm(K_latent - 1)
+    L_new[n, ] <- sqrt(sum(L[n, ]^2)) * c(sqrt(DGP_ALIGN), sqrt(1 - DGP_ALIGN) * u / sqrt(sum(u^2)))
+  }
+  # Nonstationary DGP: the latent mean is the cumulative sum of DGP_SIGMA * Phi %*% t(Lambda).
+  shift <- apply(DGP_SIGMA * test_data$Phi[i, , ] %*% t(L_new - L), 2, cumsum)
+  test_ys <- test_ys + shift
+  test_latent <- test_latent + shift
 
   # Order the columns for the triangular loadings. The treated unit stays in column 1, which
   # everything downstream indexing it by position relies on.
   perm <- anchor_order(test_ys, K_latent + 1)
   stopifnot(perm[1] == 1)
   fit_ys <- test_ys[, perm]
-  true_ys_perm <- test_data$ys_latent[i, , perm]
+  true_ys_perm <- test_latent[, perm]
   num_treated_ex1 <- NUM_TREATED
 
   # ---- scales -------------------------------------------------------------------------------
@@ -291,6 +308,8 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       return(res)
     }) |>
     list_flatten()
+  # Which units were aligned, as columns of the drawn dataset (before anchor_order's permutation).
+  res$aligned_units <- paste(aligned, collapse = ",")
 
   pns_means <- apply(fits$nonstat$y_means, c(2, 3), mean)
   pstat_means <- apply(fits$stat$y_means, c(2, 3), mean)
@@ -321,9 +340,8 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed) {
   pp_seed <- sample.int(.Machine$integer.max, 1)
 
   test_data <- sample_model(
-    # sigma = 1 and err_sd = 2 are the truth the arms are measured against. The nonstationary arm
-    # is handed both, along with the true rho prior and the same alpha_diag, so "correctly
-    # specified" here means more than the true functional form.
+    # DGP_SIGMA and DGP_ETA are the truth the arms are measured against. The nonstationary arm is
+    # handed both, along with the true rho prior and the same alpha_diag.
     overall_scales = rep(DGP_SIGMA, N_UNITS), err_scale = DGP_ETA,
     alpha_diag = ALPHA_DIAG,
     autocor_a = DGP_RHO[1], autocor_b = DGP_RHO[2],

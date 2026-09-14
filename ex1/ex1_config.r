@@ -6,16 +6,23 @@
 ## are multiplied by empirical point estimates of the denominators.
 
 ## ---- data-generating process ----------------------------------------------------------------------
-## Ground truth for simulation studies: nonstationary factors with sigma = 1 and an iid error sd = 2.
+## Ground truth for simulation studies: nonstationary factors with sigma = 1 and an iid error sd = 1.
 ## In simulation study, nonstationary model inherits DGP_RHO and ALPHA_DIAG, matching the DGP.
 DGP_SIGMA <- 1
-DGP_ETA <- 2
+DGP_ETA <- 1
 DGP_RHO <- c(7, 3)
+
+## Aligned donors: DGP_N_ALIGNED randomly chosen untreated units keep their prior-drawn loading
+## length, but their loading direction is rotated so that a fraction DGP_ALIGN of it lies along the
+## treated unit's factor. Without these, donors drawn from the prior rarely track the treated unit,
+## which real donor pools are chosen to do.
+DGP_N_ALIGNED <- 4
+DGP_ALIGN <- 0.8
 
 ## ---- model shape ----------------------------------------------------------------------------------
 N_UNITS <- 8
 T_TIMES <- 20
-K_LATENT <- 4
+K_LATENT <- 3
 NUM_TREATED <- 5
 
 ## Shape parameter for zero-avoiding inverse-gamma on the loading diagonal.
@@ -49,22 +56,24 @@ RHO_STAT <- c(98, 2)          # stationary model gets large autocorrelations to 
 ##                       point of ruling it out.
 ##                       Coupled to ETA_FRAC_STAT, which scales the error term and also
 ##                       affects the outcome SD.
-SIGMA_MULT_NONSTAT <- 1 / 5.3
+SIGMA_MULT_NONSTAT <- 1 / 4.769
 SIGMA_MULT_STAT <- 2
 
 ## Error scales, as fractions of average RMS. Eta is expressed on the outcome scale in both
 ## models, not on the differenced scale in the nonstationary case like sigma.
 ##
-##   ETA_FRAC_NONSTAT  the DGP's own iid error sd, 2 x this arm's sigma.
+##   ETA_FRAC_NONSTAT  the DGP's own iid error sd, (DGP_ETA / DGP_SIGMA) x this arm's sigma.
 ##
 ##   ETA_FRAC_STAT     Justified by prior predictive check of the correlation between time
 ##                     and outcome. Large error levels attenuate this correlation, so must
 ##                     be small enough for stationary model to mimic nonstationarity in the
 ##                     short run and pass predictive check.
+##                     Set so the prior centres eta near a quarter of the DGP's error sd
+##                     (0.058 x E[RMS] ~ 0.28 DGP_ETA), so also coupled to DGP_ETA.
 ##                     Coupled to SIGMA_MULT_STAT since the combination of these two scales
 ##                     determines the overall outcome scale.
-ETA_FRAC_NONSTAT <- 2 * SIGMA_MULT_NONSTAT
-ETA_FRAC_STAT <- 0.1
+ETA_FRAC_NONSTAT <- (DGP_ETA / DGP_SIGMA) * SIGMA_MULT_NONSTAT
+ETA_FRAC_STAT <- 0.058
 
 ## Spread of the truncated-normal prior on eta, as a coefficient of variation, shared by
 ## stationary and nonstationary models.
@@ -83,4 +92,4 @@ DELTA_FRAC <- 0.5
 ## This is a measured property of the model which is verified in the derivation script
 ## ex1_derive_scales.r.
 ## Coupled to T_TIMES, K_LATENT, ALPHA_DIAG, RHO_STAT and ETA_FRAC_STAT.
-SD_PER_SIGMA <- 0.273
+SD_PER_SIGMA <- 0.265
