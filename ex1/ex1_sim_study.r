@@ -68,9 +68,10 @@ worker_progress <- function(label, logfile = "progress.log") {
 }
 
 # Fits that miss the convergence criterion are refit with more iterations and a higher
-# adapt_delta, up to two extra rounds. The mechanism is in sample_model.r; these are ex1's rungs.
+# adapt_delta, up to three extra rounds. The mechanism is in sample_model.r; these are ex1's rungs.
+# The third rung is for slow mixing: in the 600-rep run, 22 fits still missed rhat 1.01 after 12000.
 EX1_LADDER <- if (STUDY_MODE == "fast") escalation_ladder(integer(0), integer(0)) else
-  escalation_ladder(iter = c(8000L, 12000L), warm = c(2000L, 3000L))
+  escalation_ladder(iter = c(8000L, 12000L, 24000L), warm = c(2000L, 3000L, 6000L))
 ESCALATE_MAX <- EX1_LADDER$max_rounds   # seeds are drawn one per fit per round
 
 # How many reps get a per-rep fit figure.
@@ -78,6 +79,10 @@ PLOT_REPS <- 25L
 
 EX1_ITER <- if (STUDY_MODE == "fast") 500L else 2000L
 EX1_WARM <- if (STUDY_MODE == "fast") 500L else 500L
+# Initial adapt_delta. The nonstationary model starts higher: at 0.8, 10% of its fits in the 600-rep
+# run diverged too often, and 0.95 cleared all but one of them on refit.
+EX1_AD_NONSTAT <- 0.95
+EX1_AD_STAT <- 0.8
 
 # Column ordering for the triangular (Cholesky) loadings: the treated unit stays first, then the
 # untreated columns most orthogonal to those already chosen. A reparameterization only -- the fitted
@@ -201,7 +206,7 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       data = fit_ys,
       autocor_a = RHO_NONSTAT[1], autocor_b = RHO_NONSTAT[2],
       nonstationary = TRUE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
-      type = "posterior", K_latent = K_latent, ad = 0.8,
+      type = "posterior", K_latent = K_latent, ad = EX1_AD_NONSTAT,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
@@ -219,7 +224,7 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       data = fit_ys,
       autocor_a = RHO_STAT[1], autocor_b = RHO_STAT[2],
       nonstationary = FALSE, num_treated = num_treated_ex1, delta_scale = delta_scale_ex1,
-      type = "posterior", K_latent = K_latent, ad = 0.8,
+      type = "posterior", K_latent = K_latent, ad = EX1_AD_STAT,
       iter = EX1_ITER, iter_warm = EX1_WARM,
       n_chains = 3, pathfinder_init = TRUE
     ),
@@ -353,7 +358,7 @@ run_sim_study_stat <- function(K_latent = K_LATENT, reps, seed) {
   exp_vars <- c("run_sim_stat", "worker_progress", "sample_model", "ife_mod", "plot_post_fits_stat",
     "pathfinder_inits", "draw_to_init", "PF_PARAM_BASES", "anchor_order",
     "fit_with_escalation", "escalation_ladder", "ESCALATE_MAX", "EX1_LADDER",
-    "EX1_ITER", "EX1_WARM", "PLOT_REPS")
+    "EX1_ITER", "EX1_WARM", "EX1_AD_NONSTAT", "EX1_AD_STAT", "PLOT_REPS")
   exp_packages <- c("cmdstanr", "posterior", "forcats", "dplyr", "ggplot2")
   cat(sprintf(
     paste0(
