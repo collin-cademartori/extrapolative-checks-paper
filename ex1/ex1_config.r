@@ -80,11 +80,11 @@ ETA_FRAC_STAT <- 0.058
 ETA_CV_EX1 <- 1.0
 
 ## Prior scale for the treatment effect, multiplied by the treated unit's PRE-treatment SD.
-## Expresses idea that treatment effects are typically smaller than the variation already present
+## Expresses idea that treatment effects are typically no larger than the variation already present
 ## in the series they act on. Pre-treatment only, so that a large effect cannot widen its own prior.
 ## Both models compute it from the data identically, so differences in posterior inference are not
 ## confounded with differences in the prior.
-DELTA_FRAC <- 0.5
+DELTA_FRAC <- 1.0
 
 ## Realised outcome SD over sigma, for the stationary configuration over T = 20 window.
 ## Outcome SD is substantially lower than long-run SD in stationary model when
