@@ -275,6 +275,10 @@ run_sim_stat <- function(test_data, i, K_latent, progress_log = NULL) {
       psds <- pfit$effect_sds
       res[paste0("sd_", seq_along(psds))] <- psds
 
+      # Exact posterior P(delta_t > 0) and two-sided tail area of the true (zero) effect.
+      res[paste0("ppos_", seq_along(psds))] <- pfit$effect_p_pos
+      res[paste0("tail_", seq_along(psds))] <- pfit$effect_tail
+
       pred_mad <- pfit$mean_abs_diffs
       res$pred_mad <- pred_mad
 
