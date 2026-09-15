@@ -254,6 +254,10 @@ run_sim_intercepts <- function(N_comp, level, K_latent = K_LATENT, rep_i = NA, p
       psds <- pfit$effect_sds
       res[paste0("sd_", seq_along(psds))] <- psds
 
+      # Exact posterior P(delta_t > 0) and two-sided tail area of the true (zero) effect.
+      res[paste0("ppos_", seq_along(psds))] <- pfit$effect_p_pos
+      res[paste0("tail_", seq_along(psds))] <- pfit$effect_tail
+
       cor_sq <- pfit$cor_sq
       res[paste0("cor_sq_", seq_along(cor_sq))] <- cor_sq
 
